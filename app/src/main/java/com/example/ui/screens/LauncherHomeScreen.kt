@@ -92,15 +92,18 @@ import com.example.data.HardwareTelemetry
 import com.example.data.InstalledAppInfo
 import com.example.data.PermissionStatus
 import com.example.data.WallpaperTheme
+import com.example.ads.AdMobBannerBar
 import com.example.ui.components.SlantedTabShape
 import com.example.ui.components.TurboXEmblem
 import com.example.ui.components.cpuModeColor
+import com.example.ui.components.formatCompactTurboClock
 import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberElevated
 import com.example.ui.theme.CyberSlate
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldActive
+import com.example.ui.theme.EmeraldBright
 import com.example.ui.theme.LocalTurboAccent
 import com.example.ui.theme.MidnightSurface
 import com.example.ui.theme.ObsidianVoid
@@ -120,11 +123,13 @@ fun LauncherHomeScreen(
     permissions: PermissionStatus,
     addedGames: List<InstalledAppInfo>,
     sessionHistory: List<GameSessionRecord>,
+    remainingTurboSeconds: Long,
     statusMessage: String?,
     isOverlayServiceRunning: Boolean,
     getAppIcon: (String) -> ImageBitmap?,
     onSelectGame: (String) -> Unit,
     onStartPlay: () -> Unit,
+    onAddTurboTimeClick: () -> Unit,
     onOpenOverlayPreview: () -> Unit,
     onToggleOverlayService: () -> Unit,
     onNavigateAddApps: () -> Unit,
@@ -243,8 +248,9 @@ fun LauncherHomeScreen(
                             HeaderStatusCluster(
                                 clock = currentClock,
                                 telemetry = telemetry,
-                                usageMinutes = settings.totalUsageMinutes,
-                                onBoostClick = onBoostRam
+                                remainingTurboSeconds = remainingTurboSeconds,
+                                accentColor = palette.accent,
+                                onAddTimeClick = onAddTurboTimeClick
                             )
                         }
                     }
@@ -296,8 +302,9 @@ fun LauncherHomeScreen(
                         HeaderStatusCluster(
                             clock = currentClock,
                             telemetry = telemetry,
-                            usageMinutes = settings.totalUsageMinutes,
-                            onBoostClick = onBoostRam
+                            remainingTurboSeconds = remainingTurboSeconds,
+                            accentColor = palette.accent,
+                            onAddTimeClick = onAddTurboTimeClick
                         )
                     }
                 }
@@ -375,6 +382,7 @@ fun LauncherHomeScreen(
                                     StartPlayButtonCluster(
                                         accentColor = palette.accent,
                                         accentDeep = palette.accentDeep,
+                                        remainingTurboSeconds = remainingTurboSeconds,
                                         onStartPlay = onStartPlay,
                                         onQuickPanel = onOpenOverlayPreview,
                                         modifier = Modifier
@@ -432,6 +440,7 @@ fun LauncherHomeScreen(
                                 StartPlayButtonCluster(
                                     accentColor = palette.accent,
                                     accentDeep = palette.accentDeep,
+                                    remainingTurboSeconds = remainingTurboSeconds,
                                     onStartPlay = onStartPlay,
                                     onQuickPanel = onOpenOverlayPreview
                                 )
@@ -476,7 +485,9 @@ fun LauncherHomeScreen(
                             settings = settings,
                             telemetry = telemetry,
                             sessionHistory = sessionHistory,
+                            remainingTurboSeconds = remainingTurboSeconds,
                             isOverlayRunning = isOverlayServiceRunning,
+                            onAddTurboTime = onAddTurboTimeClick,
                             onBoostRam = onBoostRam,
                             onRunPingTest = onRunPingTest,
                             onToggleOverlayService = onToggleOverlayService
@@ -509,11 +520,18 @@ fun LauncherHomeScreen(
                     }
                 }
 
+                // REAL ADMOB BANNER AD
+                AdMobBannerBar(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 2.dp)
+                )
+
                 // BOTTOM SLANTED TABS: Lobby | DataBase Page
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 6.dp),
+                        .padding(top = 4.dp),
                     horizontalArrangement = Arrangement.Center
                 ) {
                     SlantedBottomTab(
@@ -558,12 +576,13 @@ fun LauncherHomeScreen(
 private fun HeaderStatusCluster(
     clock: String,
     telemetry: HardwareTelemetry,
-    usageMinutes: Int,
-    onBoostClick: () -> Unit
+    remainingTurboSeconds: Long,
+    accentColor: Color,
+    onAddTimeClick: () -> Unit
 ) {
-    val usageHours = usageMinutes / 60
-    val usageMins = usageMinutes % 60
-    val formattedUsage = String.format(Locale.US, "%dh:%02dm", usageHours, usageMins)
+    val hasTime = remainingTurboSeconds > 0L
+    val timeColor = if (hasTime) EmeraldBright else CyberAmber
+    val formattedRemaining = formatCompactTurboClock(remainingTurboSeconds)
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -587,29 +606,59 @@ private fun HeaderStatusCluster(
                 color = TextSecondary
             )
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .testTag("turbo_time_badge")
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (hasTime) EmeraldActive.copy(alpha = 0.14f) else accentColor.copy(alpha = 0.14f))
+                .border(
+                    1.dp,
+                    if (hasTime) EmeraldActive.copy(alpha = 0.5f) else CyberAmber.copy(alpha = 0.5f),
+                    RoundedCornerShape(10.dp)
+                )
+                .clickable { onAddTimeClick() }
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
             Icon(
                 imageVector = Icons.Rounded.Bolt,
-                contentDescription = "Active gaming time",
-                tint = TextSecondary,
+                contentDescription = "Remaining Turbo Time",
+                tint = timeColor,
                 modifier = Modifier.size(15.dp)
             )
             Text(
-                text = formattedUsage,
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
+                text = formattedRemaining,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontFamily = RajdhaniFontFamily,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = timeColor
             )
         }
         Box(
             modifier = Modifier
-                .testTag("header_boost_btn")
-                .size(26.dp)
+                .testTag("header_add_time_btn")
+                .size(48.dp)
                 .clip(CircleShape)
-                .background(CyberElevated)
-                .clickable { onBoostClick() },
+                .clickable { onAddTimeClick() },
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Rounded.Add, contentDescription = "Quick RAM boost", tint = TextPrimary, modifier = Modifier.size(16.dp))
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(CyberElevated)
+                    .border(1.dp, if (hasTime) CyberBorder else CyberAmber, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Add,
+                    contentDescription = "Watch ad to add 1 hour Turbo Time",
+                    tint = if (hasTime) TextPrimary else CyberAmber,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 }
@@ -807,58 +856,95 @@ private fun AddGameSquareButton(onClick: () -> Unit) {
 private fun StartPlayButtonCluster(
     accentColor: Color,
     accentDeep: Color,
+    remainingTurboSeconds: Long,
     onStartPlay: () -> Unit,
     onQuickPanel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    val hasTime = remainingTurboSeconds > 0L
+    Column(
         modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .testTag("start_play_button")
-                .height(48.dp)
-                .width(156.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(accentColor, accentDeep)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .testTag("start_play_button")
+                    .height(48.dp)
+                    .width(168.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            colors = if (hasTime) {
+                                listOf(accentColor, accentDeep)
+                            } else {
+                                listOf(CyberElevated, CyberSlate)
+                            }
+                        )
                     )
-                )
-                .border(1.dp, accentColor.copy(alpha = 0.8f), RoundedCornerShape(8.dp))
-                .clickable { onStartPlay() },
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "Start Play",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontFamily = RajdhaniFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                ),
-                color = Color.White
-            )
-        }
+                    .border(
+                        1.dp,
+                        if (hasTime) accentColor.copy(alpha = 0.85f) else CyberAmber.copy(alpha = 0.75f),
+                        RoundedCornerShape(8.dp)
+                    )
+                    .clickable { onStartPlay() },
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (!hasTime) {
+                        Icon(
+                            imageVector = Icons.Rounded.Bolt,
+                            contentDescription = null,
+                            tint = CyberAmber,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Text(
+                        text = if (hasTime) "Start Play" else "Watch Ad to Play",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = RajdhaniFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp
+                        ),
+                        color = if (hasTime) Color.White else CyberAmber
+                    )
+                }
+            }
 
-        Box(
-            modifier = Modifier
-                .testTag("quick_panel_arrow_btn")
-                .size(44.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(ObsidianVoid.copy(alpha = 0.9f))
-                .border(1.5.dp, accentColor, RoundedCornerShape(10.dp))
-                .clickable { onQuickPanel() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                contentDescription = "Open Game Panel",
-                tint = Color.White,
-                modifier = Modifier.size(24.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .testTag("quick_panel_arrow_btn")
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(ObsidianVoid.copy(alpha = 0.9f))
+                    .border(1.5.dp, accentColor, RoundedCornerShape(10.dp))
+                    .clickable { onQuickPanel() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = "Open Game Panel",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
+        Text(
+            text = if (hasTime) {
+                "Turbo Time Active • ${formatCompactTurboClock(remainingTurboSeconds)}"
+            } else {
+                "0:00:00 left • Watch 1 Ad for +1h:00m"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = if (hasTime) EmeraldBright else CyberAmber
+        )
     }
 }
 
@@ -907,7 +993,9 @@ private fun DataBasePageContent(
     settings: GameTurboSettings,
     telemetry: HardwareTelemetry,
     sessionHistory: List<GameSessionRecord>,
+    remainingTurboSeconds: Long,
     isOverlayRunning: Boolean,
+    onAddTurboTime: () -> Unit,
     onBoostRam: () -> Unit,
     onRunPingTest: () -> Unit,
     onToggleOverlayService: () -> Unit
@@ -995,6 +1083,36 @@ private fun DataBasePageContent(
                         textAlign = TextAlign.End
                     )
                 }
+            }
+        }
+
+        // Turbo Time Credit Banner
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(MidnightSurface)
+                .border(1.dp, if (remainingTurboSeconds > 0L) EmeraldActive.copy(alpha = 0.6f) else CyberAmber.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Turbo Play Time", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                Text(
+                    text = "${formatCompactTurboClock(remainingTurboSeconds)} left • ${settings.adsWatchedCount} ads watched",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (remainingTurboSeconds > 0L) EmeraldBright else CyberAmber
+                )
+            }
+            Button(
+                onClick = onAddTurboTime,
+                colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Icon(Icons.Rounded.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("+1h Ad")
             }
         }
 

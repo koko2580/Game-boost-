@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -74,6 +75,8 @@ class GameTurboPreferencesRepository(private val context: Context) {
         val TOTAL_BOOST_COUNT = intPreferencesKey("total_boost_count")
         val LAST_FREED_MB = intPreferencesKey("last_freed_mb")
         val TOTAL_USAGE_MINUTES = intPreferencesKey("total_usage_minutes")
+        val TURBO_TIME_EXPIRES_AT_MS = longPreferencesKey("turbo_time_expires_at_ms")
+        val ADS_WATCHED_COUNT = intPreferencesKey("ads_watched_count")
     }
 
     val settingsFlow: Flow<GameTurboSettings> = context.dataStore.data.map { prefs ->
@@ -141,6 +144,8 @@ class GameTurboPreferencesRepository(private val context: Context) {
             prefs[Keys.TOTAL_BOOST_COUNT] = updated.totalBoostCount
             prefs[Keys.LAST_FREED_MB] = updated.lastFreedMb
             prefs[Keys.TOTAL_USAGE_MINUTES] = updated.totalUsageMinutes
+            prefs[Keys.TURBO_TIME_EXPIRES_AT_MS] = updated.turboTimeExpiresAtMs
+            prefs[Keys.ADS_WATCHED_COUNT] = updated.adsWatchedCount
         }
     }
 
@@ -194,7 +199,9 @@ class GameTurboPreferencesRepository(private val context: Context) {
         selectedGamePackage = prefs[Keys.SELECTED_GAME_PACKAGE],
         totalBoostCount = prefs[Keys.TOTAL_BOOST_COUNT] ?: 0,
         lastFreedMb = prefs[Keys.LAST_FREED_MB] ?: 0,
-        totalUsageMinutes = prefs[Keys.TOTAL_USAGE_MINUTES] ?: 0
+        totalUsageMinutes = prefs[Keys.TOTAL_USAGE_MINUTES] ?: 0,
+        turboTimeExpiresAtMs = prefs[Keys.TURBO_TIME_EXPIRES_AT_MS] ?: 0L,
+        adsWatchedCount = prefs[Keys.ADS_WATCHED_COUNT] ?: 0
     )
 
     private inline fun <reified T : Enum<T>> enumOrDefault(raw: String?, default: T): T {

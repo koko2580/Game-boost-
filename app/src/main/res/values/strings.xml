@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Turbo Game X</string>
+    <string name="admob_app_id" translatable="false">ca-app-pub-5984576938417142~8737463815</string>
 </resources>

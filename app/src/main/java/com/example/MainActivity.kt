@@ -50,6 +50,7 @@ import com.example.service.GameOverlayService
 import com.example.ui.components.CrosshairOverlay
 import com.example.ui.components.GamePanelOverlayContent
 import com.example.ui.components.OverlayCallbacks
+import com.example.ui.components.RewardedAdDialog
 import com.example.ui.components.TurboXEmblem
 import com.example.ui.components.cpuModeColor
 import com.example.ui.screens.AddAppsScreen
@@ -98,6 +99,11 @@ class MainActivity : ComponentActivity() {
             val launchingGameName by viewModel.launchingGameName.collectAsStateWithLifecycle()
             val statusMessage by viewModel.statusMessage.collectAsStateWithLifecycle()
             val isOverlayServiceRunning by viewModel.isOverlayServiceRunning.collectAsStateWithLifecycle()
+            val remainingTurboSeconds by viewModel.remainingTurboSeconds.collectAsStateWithLifecycle()
+            val adStep by viewModel.adStep.collectAsStateWithLifecycle()
+            val rewardedAdReady by viewModel.rewardedAdReady.collectAsStateWithLifecycle()
+            val rewardedAdLoading by viewModel.rewardedAdLoading.collectAsStateWithLifecycle()
+            val rewardedAdError by viewModel.rewardedAdError.collectAsStateWithLifecycle()
 
             // Real Choreographer FPS measurement
             DisposableEffect(Unit) {
@@ -162,11 +168,13 @@ class MainActivity : ComponentActivity() {
                                 permissions = permissions,
                                 addedGames = addedGames,
                                 sessionHistory = sessionHistory,
+                                remainingTurboSeconds = remainingTurboSeconds,
                                 statusMessage = statusMessage,
                                 isOverlayServiceRunning = isOverlayServiceRunning,
                                 getAppIcon = viewModel::getAppIcon,
                                 onSelectGame = viewModel::selectGame,
                                 onStartPlay = viewModel::launchSelectedGame,
+                                onAddTurboTimeClick = { viewModel.openWatchAdPrompt() },
                                 onOpenOverlayPreview = viewModel::openInAppOverlay,
                                 onToggleOverlayService = {
                                     if (isOverlayServiceRunning) {
@@ -178,7 +186,10 @@ class MainActivity : ComponentActivity() {
                                 onNavigateAddApps = { navController.navigate(ROUTE_ADD_APPS) },
                                 onNavigateSettings = { navController.navigate(ROUTE_SETTINGS) },
                                 onNavigatePermissions = { navController.navigate(ROUTE_PERMISSIONS) },
-                                onBoostRam = viewModel::performBoost,
+                                onBoostRam = {
+                                    viewModel.performBoost()
+                                    viewModel.maybeShowInterstitial(this@MainActivity)
+                                },
                                 onRunPingTest = viewModel::runPingTest,
                                 onSelectWallpaperTheme = viewModel::setWallpaperTheme,
                                 onDismissStatus = viewModel::clearStatus
@@ -195,7 +206,11 @@ class MainActivity : ComponentActivity() {
                                 onClearCache = viewModel::clearCache,
                                 onSelectWallpaperTheme = viewModel::setWallpaperTheme,
                                 onOpenPermissions = { navController.navigate(ROUTE_PERMISSIONS) },
-                                onBack = { navController.popBackStack() }
+                                onBack = {
+                                    viewModel.maybeShowInterstitial(this@MainActivity) {
+                                        navController.popBackStack()
+                                    }
+                                }
                             )
                         }
 
@@ -206,7 +221,11 @@ class MainActivity : ComponentActivity() {
                                 isLoading = appsLoading,
                                 getAppIcon = viewModel::getAppIcon,
                                 onToggleApp = viewModel::toggleGameAdded,
-                                onBack = { navController.popBackStack() }
+                                onBack = {
+                                    viewModel.maybeShowInterstitial(this@MainActivity) {
+                                        navController.popBackStack()
+                                    }
+                                }
                             )
                         }
 
@@ -217,7 +236,11 @@ class MainActivity : ComponentActivity() {
                                 onRequestDnd = viewModel.hardware::openDndPermissionSettings,
                                 onRequestOverlay = viewModel.hardware::openOverlayPermissionSettings,
                                 onRequestWriteSettings = viewModel.hardware::openWriteSettingsPermission,
-                                onBack = { navController.popBackStack() }
+                                onBack = {
+                                    viewModel.maybeShowInterstitial(this@MainActivity) {
+                                        navController.popBackStack()
+                                    }
+                                }
                             )
                         }
                     }
@@ -349,6 +372,18 @@ class MainActivity : ComponentActivity() {
                             glowColor = cpuModeColor(settings.cpuMode, LocalTurboAccent.current.accent)
                         )
                     }
+
+                    // Turbo Time Gate & Real AdMob Rewarded Ad Dialog
+                    RewardedAdDialog(
+                        step = adStep,
+                        remainingTurboSeconds = remainingTurboSeconds,
+                        adReady = rewardedAdReady,
+                        adLoading = rewardedAdLoading,
+                        adError = rewardedAdError,
+                        onWatchAd = { viewModel.watchRealRewardedAd(this@MainActivity) },
+                        onRetryLoad = viewModel::retryLoadRewardedAd,
+                        onDismiss = viewModel::dismissAdDialog
+                    )
                 }
             }
         }

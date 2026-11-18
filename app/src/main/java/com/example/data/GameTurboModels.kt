@@ -173,8 +173,13 @@ data class GameTurboSettings(
     val selectedGamePackage: String? = null,
     val totalBoostCount: Int = 0,
     val lastFreedMb: Int = 0,
-    val totalUsageMinutes: Int = 0
+    val totalUsageMinutes: Int = 0,
+    // Turbo Time Credit (Rewarded Ad Gate)
+    val turboTimeExpiresAtMs: Long = 0L,
+    val adsWatchedCount: Int = 0
 )
+
+const val AD_REWARD_DURATION_MS: Long = 3_600_000L // 1 hour per ad
 
 val SLIDING_FRICTION_LABELS = listOf("OFF", "2.0", "1.0", "0.8", "0.5", "0.1", "0.05", "0.01")
 val SLIDING_FRICTION_FACTORS = listOf(1.0f, 1.08f, 1.15f, 1.25f, 1.38f, 1.55f, 1.75f, 2.0f)

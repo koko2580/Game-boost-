@@ -7,6 +7,9 @@ import android.os.Build
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.TurboGameApplication
+import com.example.ads.AdMobManager
+import com.example.data.AD_REWARD_DURATION_MS
 import com.example.data.ControlPanelLayout
 import com.example.data.CpuMode
 import com.example.data.CpuUnitFormat
@@ -31,8 +34,18 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+sealed interface RewardedAdStep {
+    data object Hidden : RewardedAdStep
+    data class TimeGatePrompt(
+        val targetGameName: String?,
+        val launchAfterReward: Boolean,
+        val waitingForLoad: Boolean = false
+    ) : RewardedAdStep
+}
 
 class GameTurboViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -97,6 +110,23 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isOverlayServiceRunning = MutableStateFlow(GameOverlayService.isRunning)
     val isOverlayServiceRunning: StateFlow<Boolean> = _isOverlayServiceRunning.asStateFlow()
 
+    private val adMobManager: AdMobManager? = (application as? TurboGameApplication)?.adMobManager
+
+    val rewardedAdReady: StateFlow<Boolean> =
+        adMobManager?.rewardedAdReady ?: MutableStateFlow(false).asStateFlow()
+
+    val rewardedAdLoading: StateFlow<Boolean> =
+        adMobManager?.rewardedAdLoading ?: MutableStateFlow(false).asStateFlow()
+
+    val rewardedAdError: StateFlow<String?> =
+        adMobManager?.rewardedAdError ?: MutableStateFlow<String?>(null).asStateFlow()
+
+    private val _remainingTurboSeconds = MutableStateFlow(0L)
+    val remainingTurboSeconds: StateFlow<Long> = _remainingTurboSeconds.asStateFlow()
+
+    private val _adStep = MutableStateFlow<RewardedAdStep>(RewardedAdStep.Hidden)
+    val adStep: StateFlow<RewardedAdStep> = _adStep.asStateFlow()
+
     private var lastPingMs: Int? = null
     private var lastJitterMs: Int? = null
     private var lastFrameNanos: Long = 0L
@@ -111,6 +141,7 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         refreshInstalledApps()
         startTelemetryLoop()
         startStopwatchLoop()
+        startTurboTimeLoop()
     }
 
     fun onChoreographerFrame(frameTimeNanos: Long) {
@@ -177,6 +208,127 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
         }
+    }
+
+    private fun startTurboTimeLoop() {
+        viewModelScope.launch {
+            settings.collect { s ->
+                _remainingTurboSeconds.value = computeRemainingSeconds(s.turboTimeExpiresAtMs)
+            }
+        }
+        viewModelScope.launch {
+            while (true) {
+                val rem = computeRemainingSeconds(settings.value.turboTimeExpiresAtMs)
+                _remainingTurboSeconds.value = rem
+                delay(1000L)
+            }
+        }
+    }
+
+    private fun computeRemainingSeconds(expiresAtMs: Long): Long {
+        val diffMs = expiresAtMs - System.currentTimeMillis()
+        return if (diffMs <= 0L) 0L else (diffMs + 999L) / 1000L
+    }
+
+    fun openWatchAdPrompt(targetGameName: String? = null, launchAfterReward: Boolean = false) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        adMobManager?.loadRewardedAd()
+        _adStep.value = RewardedAdStep.TimeGatePrompt(
+            targetGameName = targetGameName,
+            launchAfterReward = launchAfterReward,
+            waitingForLoad = false
+        )
+    }
+
+    fun retryLoadRewardedAd() {
+        adMobManager?.loadRewardedAd()
+    }
+
+    fun watchRealRewardedAd(activity: Activity?) {
+        val currentStep = _adStep.value as? RewardedAdStep.TimeGatePrompt ?: return
+        if (activity == null || adMobManager == null) {
+            showStatus("Ad service unavailable")
+            return
+        }
+        hardware.audioEnhancer.pulseHaptic(false)
+
+        if (adMobManager.rewardedAdReady.value) {
+            showLoadedRewardedAd(activity, currentStep.launchAfterReward)
+        } else {
+            _adStep.value = currentStep.copy(waitingForLoad = true)
+            adMobManager.loadRewardedAd()
+            viewModelScope.launch {
+                adMobManager.rewardedAdLoading.first { !it }
+                val activeStep = _adStep.value as? RewardedAdStep.TimeGatePrompt
+                if (activeStep != null && activeStep.waitingForLoad) {
+                    if (adMobManager.rewardedAdReady.value && !activity.isFinishing && !activity.isDestroyed) {
+                        showLoadedRewardedAd(activity, activeStep.launchAfterReward)
+                    } else {
+                        _adStep.value = activeStep.copy(waitingForLoad = false)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showLoadedRewardedAd(activity: Activity, launchAfterReward: Boolean) {
+        val manager = adMobManager ?: return
+        _adStep.value = RewardedAdStep.Hidden
+        manager.showRewardedAd(
+            activity = activity,
+            onRewardEarned = {
+                grantOneHourReward(launchAfterReward)
+            },
+            onClosedWithoutReward = {
+                showStatus("Watch the full ad to earn +1h:00m Turbo Time")
+            },
+            onNotReady = {
+                _adStep.value = RewardedAdStep.TimeGatePrompt(
+                    targetGameName = null,
+                    launchAfterReward = launchAfterReward,
+                    waitingForLoad = false
+                )
+                showStatus("Loading AdMob Rewarded Ad, please try again")
+            }
+        )
+    }
+
+    private fun grantOneHourReward(launchAfterReward: Boolean) {
+        hardware.audioEnhancer.playTacticalTone()
+        hardware.audioEnhancer.pulseHaptic(true)
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            var newExpiresAt = now + AD_REWARD_DURATION_MS
+            repo.updateSettings { current ->
+                val base = maxOf(now, current.turboTimeExpiresAtMs)
+                newExpiresAt = base + AD_REWARD_DURATION_MS
+                current.copy(
+                    turboTimeExpiresAtMs = newExpiresAt,
+                    adsWatchedCount = current.adsWatchedCount + 1
+                )
+            }
+            _remainingTurboSeconds.value = computeRemainingSeconds(newExpiresAt)
+            showStatus("+1h:00m Turbo Time unlocked!")
+            if (launchAfterReward) {
+                val s = settings.value
+                val pkg = s.selectedGamePackage ?: addedGames.value.firstOrNull()?.packageName
+                if (pkg != null) {
+                    launchGamePackage(pkg, s)
+                }
+            }
+        }
+    }
+
+    fun maybeShowInterstitial(activity: Activity?, onComplete: () -> Unit = {}) {
+        if (activity == null || adMobManager == null) {
+            onComplete()
+            return
+        }
+        adMobManager.showInterstitialIfReady(activity, onComplete)
+    }
+
+    fun dismissAdDialog() {
+        _adStep.value = RewardedAdStep.Hidden
     }
 
     fun toggleStopwatch() {
@@ -501,54 +653,67 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         val gameName = addedGames.value.find { it.packageName == pkg }?.appName ?: pkg
+        val remaining = computeRemainingSeconds(s.turboTimeExpiresAtMs)
+        _remainingTurboSeconds.value = remaining
+        if (remaining <= 0L) {
+            hardware.audioEnhancer.pulseHaptic(false)
+            showStatus("No Turbo Time left! Watch 1 Ad for +1h:00m")
+            openWatchAdPrompt(targetGameName = gameName, launchAfterReward = true)
+            return
+        }
         viewModelScope.launch {
-            hardware.audioEnhancer.pulseHaptic(true)
-            if (s.openingAnimation) {
-                _launchingGameName.value = gameName
-                delay(950L)
-                _launchingGameName.value = null
-            }
-            if (s.autoDndOnEnter || s.dndMode) {
-                hardware.setDoNotDisturb(true)
-            }
-            if (s.muteNotificationsInGame || s.notificationMuteMode) {
-                hardware.audioEnhancer.setNotificationMuted(true)
-            }
-            if (s.lockBrightness) {
-                hardware.setAutoBrightness(false)
-                hardware.setBrightnessFraction(_brightnessFraction.value)
-            }
-            if (s.rotationLock) {
-                hardware.setAutoRotate(false)
-            }
-            if (s.effectSoundEnabled && s.eqPreset != EqPreset.OFF) {
-                hardware.audioEnhancer.applyEqPreset(true, s.eqPreset)
-            }
-            if (s.preventMemoryLeaks) {
-                val allPkgs = _installedApps.value.map { it.packageName }
-                hardware.performRealMemoryBoost(
-                    protectedPackages = s.addedGamePackages + pkg,
-                    allKnownPackages = allPkgs
-                )
-            }
-            if (hardware.checkPermissions().overlayGranted) {
-                startFloatingOverlayService()
-            }
-            _sessionHistory.value = listOf(
-                GameSessionRecord(
-                    packageName = pkg,
-                    appName = gameName,
-                    timestampMillis = System.currentTimeMillis(),
-                    cpuMode = s.cpuMode
-                )
-            ) + _sessionHistory.value.take(19)
-            updateSettings { it.copy(totalUsageMinutes = it.totalUsageMinutes + 1) }
+            launchGamePackage(pkg, s)
+        }
+    }
 
-            val launched = hardware.launchPackage(pkg)
-            if (!launched) {
-                showStatus("Could not launch $gameName — opening Game Panel")
-                _isInAppOverlayOpen.value = true
-            }
+    private suspend fun launchGamePackage(pkg: String, s: GameTurboSettings) {
+        val gameName = addedGames.value.find { it.packageName == pkg }?.appName ?: pkg
+        hardware.audioEnhancer.pulseHaptic(true)
+        if (s.openingAnimation) {
+            _launchingGameName.value = gameName
+            delay(950L)
+            _launchingGameName.value = null
+        }
+        if (s.autoDndOnEnter || s.dndMode) {
+            hardware.setDoNotDisturb(true)
+        }
+        if (s.muteNotificationsInGame || s.notificationMuteMode) {
+            hardware.audioEnhancer.setNotificationMuted(true)
+        }
+        if (s.lockBrightness) {
+            hardware.setAutoBrightness(false)
+            hardware.setBrightnessFraction(_brightnessFraction.value)
+        }
+        if (s.rotationLock) {
+            hardware.setAutoRotate(false)
+        }
+        if (s.effectSoundEnabled && s.eqPreset != EqPreset.OFF) {
+            hardware.audioEnhancer.applyEqPreset(true, s.eqPreset)
+        }
+        if (s.preventMemoryLeaks) {
+            val allPkgs = _installedApps.value.map { it.packageName }
+            hardware.performRealMemoryBoost(
+                protectedPackages = s.addedGamePackages + pkg,
+                allKnownPackages = allPkgs
+            )
+        }
+        if (hardware.checkPermissions().overlayGranted) {
+            startFloatingOverlayService()
+        }
+        _sessionHistory.value = listOf(
+            GameSessionRecord(
+                packageName = pkg,
+                appName = gameName,
+                timestampMillis = System.currentTimeMillis(),
+                cpuMode = s.cpuMode
+            )
+        ) + _sessionHistory.value.take(19)
+        updateSettings { it.copy(totalUsageMinutes = it.totalUsageMinutes + 1) }
+
+        val launched = hardware.launchPackage(pkg)
+        if (!launched) {
+            showStatus("Could not launch $gameName — opening Game Panel")
+            _isInAppOverlayOpen.value = true
         }
     }
 
