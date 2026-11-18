@@ -1,0 +1,567 @@
+package com.example.viewmodel
+
+import android.app.Activity
+import android.app.Application
+import android.content.Intent
+import android.os.Build
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.data.ControlPanelLayout
+import com.example.data.CpuMode
+import com.example.data.CpuUnitFormat
+import com.example.data.CrosshairStyle
+import com.example.data.EqPreset
+import com.example.data.GamePanelStyle
+import com.example.data.GameSessionRecord
+import com.example.data.GameTurboPreferencesRepository
+import com.example.data.GameTurboSettings
+import com.example.data.HardwareTelemetry
+import com.example.data.InstalledAppInfo
+import com.example.data.PermissionStatus
+import com.example.data.ScreenColorMode
+import com.example.data.SystemHardwareController
+import com.example.data.WallpaperTheme
+import com.example.data.ScreenshotHelper
+import com.example.service.GameOverlayService
+import com.example.service.ScreenCaptureActivity
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+class GameTurboViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val repo = GameTurboPreferencesRepository(application)
+    val hardware = SystemHardwareController(application)
+
+    val settings: StateFlow<GameTurboSettings> = repo.settingsFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = GameTurboSettings()
+    )
+
+    private val _telemetry = MutableStateFlow(HardwareTelemetry())
+    val telemetry: StateFlow<HardwareTelemetry> = _telemetry.asStateFlow()
+
+    private val _permissions = MutableStateFlow(hardware.checkPermissions())
+    val permissions: StateFlow<PermissionStatus> = _permissions.asStateFlow()
+
+    private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
+    val installedApps: StateFlow<List<InstalledAppInfo>> = _installedApps.asStateFlow()
+
+    private val _appsLoading = MutableStateFlow(true)
+    val appsLoading: StateFlow<Boolean> = _appsLoading.asStateFlow()
+
+    val addedGames: StateFlow<List<InstalledAppInfo>> = combine(
+        _installedApps,
+        settings
+    ) { apps, s ->
+        apps.filter { it.packageName in s.addedGamePackages }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _brightnessFraction = MutableStateFlow(hardware.getBrightnessFraction())
+    val brightnessFraction: StateFlow<Float> = _brightnessFraction.asStateFlow()
+
+    private val _volumeFraction = MutableStateFlow(hardware.getVolumeFraction())
+    val volumeFraction: StateFlow<Float> = _volumeFraction.asStateFlow()
+
+    private val _autoBrightness = MutableStateFlow(hardware.isAutoBrightnessEnabled())
+    val autoBrightness: StateFlow<Boolean> = _autoBrightness.asStateFlow()
+
+    private val _autoRotate = MutableStateFlow(hardware.isAutoRotateEnabled())
+    val autoRotate: StateFlow<Boolean> = _autoRotate.asStateFlow()
+
+    private val _isStopwatchRunning = MutableStateFlow(false)
+    val isStopwatchRunning: StateFlow<Boolean> = _isStopwatchRunning.asStateFlow()
+
+    private val _stopwatchSeconds = MutableStateFlow(0L)
+    val stopwatchSeconds: StateFlow<Long> = _stopwatchSeconds.asStateFlow()
+
+    private val _isInAppOverlayOpen = MutableStateFlow(false)
+    val isInAppOverlayOpen: StateFlow<Boolean> = _isInAppOverlayOpen.asStateFlow()
+
+    private val _launchingGameName = MutableStateFlow<String?>(null)
+    val launchingGameName: StateFlow<String?> = _launchingGameName.asStateFlow()
+
+    private val _statusMessage = MutableStateFlow<String?>(null)
+    val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
+
+    private val _sessionHistory = MutableStateFlow<List<GameSessionRecord>>(emptyList())
+    val sessionHistory: StateFlow<List<GameSessionRecord>> = _sessionHistory.asStateFlow()
+
+    private val _isOverlayServiceRunning = MutableStateFlow(GameOverlayService.isRunning)
+    val isOverlayServiceRunning: StateFlow<Boolean> = _isOverlayServiceRunning.asStateFlow()
+
+    private var lastPingMs: Int? = null
+    private var lastJitterMs: Int? = null
+    private var lastFrameNanos: Long = 0L
+    private var frameCountWindow: Int = 0
+    private var windowStartNanos: Long = 0L
+    @Volatile
+    private var measuredFps: Int = 60
+    @Volatile
+    private var measuredFrameMs: Float = 16.6f
+
+    init {
+        refreshInstalledApps()
+        startTelemetryLoop()
+        startStopwatchLoop()
+    }
+
+    fun onChoreographerFrame(frameTimeNanos: Long) {
+        if (lastFrameNanos > 0L) {
+            val deltaNs = (frameTimeNanos - lastFrameNanos).coerceAtLeast(1_000_000L)
+            measuredFrameMs = deltaNs / 1_000_000f
+        }
+        lastFrameNanos = frameTimeNanos
+        if (windowStartNanos == 0L) windowStartNanos = frameTimeNanos
+        frameCountWindow++
+        val elapsedNs = frameTimeNanos - windowStartNanos
+        if (elapsedNs >= 500_000_000L) {
+            measuredFps = ((frameCountWindow * 1_000_000_000.0) / elapsedNs.toDouble())
+                .toInt()
+                .coerceIn(1, 144)
+            frameCountWindow = 0
+            windowStartNanos = frameTimeNanos
+        }
+    }
+
+    fun refreshPermissionsAndHardware() {
+        _permissions.value = hardware.checkPermissions()
+        _brightnessFraction.value = hardware.getBrightnessFraction()
+        _volumeFraction.value = hardware.getVolumeFraction()
+        _autoBrightness.value = hardware.isAutoBrightnessEnabled()
+        _autoRotate.value = hardware.isAutoRotateEnabled()
+        _isOverlayServiceRunning.value = GameOverlayService.isRunning
+    }
+
+    fun refreshInstalledApps() {
+        viewModelScope.launch {
+            _appsLoading.value = true
+            _installedApps.value = hardware.loadLaunchableApps()
+            _appsLoading.value = false
+        }
+    }
+
+    fun getAppIcon(packageName: String): ImageBitmap? = hardware.getAppIcon(packageName)
+
+    private fun startTelemetryLoop() {
+        viewModelScope.launch {
+            while (true) {
+                val mode = settings.value.cpuMode
+                _telemetry.value = hardware.readHardwareTelemetry(
+                    cpuMode = mode,
+                    lastPingMs = lastPingMs,
+                    lastJitterMs = lastJitterMs,
+                    actualFps = measuredFps,
+                    frameTimeMs = measuredFrameMs
+                )
+                _volumeFraction.value = hardware.getVolumeFraction()
+                _isOverlayServiceRunning.value = GameOverlayService.isRunning
+                delay(1200L)
+            }
+        }
+    }
+
+    private fun startStopwatchLoop() {
+        viewModelScope.launch {
+            while (true) {
+                delay(1000L)
+                if (_isStopwatchRunning.value) {
+                    _stopwatchSeconds.value += 1L
+                }
+            }
+        }
+    }
+
+    fun toggleStopwatch() {
+        hardware.audioEnhancer.pulseHaptic(false)
+        _isStopwatchRunning.value = !_isStopwatchRunning.value
+    }
+
+    fun resetStopwatch() {
+        _isStopwatchRunning.value = false
+        _stopwatchSeconds.value = 0L
+    }
+
+    fun updateSettings(transform: (GameTurboSettings) -> GameTurboSettings) {
+        viewModelScope.launch {
+            val prev = settings.value
+            repo.updateSettings(transform)
+            // Apply immediate side-effects when relevant settings change
+            val next = transform(prev)
+            if (next.rotationLock != prev.rotationLock) {
+                hardware.setAutoRotate(!next.rotationLock)
+                _autoRotate.value = !next.rotationLock
+            }
+            if (next.lockBrightness != prev.lockBrightness) {
+                if (next.lockBrightness) {
+                    hardware.setAutoBrightness(false)
+                    hardware.setBrightnessFraction(_brightnessFraction.value)
+                    _autoBrightness.value = false
+                }
+            }
+            if (next.notificationMuteMode != prev.notificationMuteMode) {
+                hardware.audioEnhancer.setNotificationMuted(next.notificationMuteMode)
+            }
+            if (next.dndMode != prev.dndMode) {
+                hardware.setDoNotDisturb(next.dndMode)
+            }
+        }
+    }
+
+    fun toggleGameAdded(packageName: String) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { current ->
+            val nextSet = if (packageName in current.addedGamePackages) {
+                current.addedGamePackages - packageName
+            } else {
+                current.addedGamePackages + packageName
+            }
+            val nextSelected = when {
+                current.selectedGamePackage in nextSet -> current.selectedGamePackage
+                else -> nextSet.firstOrNull()
+            }
+            current.copy(addedGamePackages = nextSet, selectedGamePackage = nextSelected)
+        }
+    }
+
+    fun selectGame(packageName: String) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(selectedGamePackage = packageName) }
+    }
+
+    fun setCpuMode(mode: CpuMode) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(cpuMode = mode) }
+        showStatus("Switched to ${mode.label}")
+    }
+
+    fun setWallpaperTheme(theme: WallpaperTheme, customUri: String? = null) {
+        updateSettings {
+            it.copy(
+                wallpaperTheme = theme,
+                customWallpaperUri = if (theme == WallpaperTheme.CUSTOM) customUri else it.customWallpaperUri
+            )
+        }
+    }
+
+    fun cycleCrosshair() {
+        hardware.audioEnhancer.pulseHaptic(false)
+        val entries = CrosshairStyle.entries
+        val next = entries[(settings.value.crosshairStyle.ordinal + 1) % entries.size]
+        updateSettings { it.copy(crosshairStyle = next) }
+        showStatus("Crosshair: ${next.label}")
+    }
+
+    fun cycleScreenColor() {
+        hardware.audioEnhancer.pulseHaptic(false)
+        val entries = ScreenColorMode.entries
+        val next = entries[(settings.value.screenColorMode.ordinal + 1) % entries.size]
+        updateSettings { it.copy(screenColorMode = next) }
+        showStatus("Screen Color: ${next.label}")
+    }
+
+    fun toggleOrCycleScreenZoom() {
+        hardware.audioEnhancer.pulseHaptic(false)
+        val s = settings.value
+        if (!s.screenZoomEnabled) {
+            updateSettings { it.copy(screenZoomEnabled = true, zoomScale = 1.5f) }
+            showStatus("Screen Zoom: 1.5x")
+        } else if (s.zoomScale < 2.5f) {
+            val nextScale = if (s.zoomScale < 1.8f) 2.0f else 3.0f
+            updateSettings { it.copy(zoomScale = nextScale) }
+            showStatus("Screen Zoom: ${nextScale}x")
+        } else {
+            updateSettings { it.copy(screenZoomEnabled = false, zoomScale = 2.0f) }
+            showStatus("Screen Zoom Off")
+        }
+    }
+
+    fun cycleEffectSound() {
+        hardware.audioEnhancer.pulseHaptic(false)
+        val entries = EqPreset.entries
+        val current = settings.value
+        val nextPreset = entries[(current.eqPreset.ordinal + 1) % entries.size]
+        val enabled = nextPreset != EqPreset.OFF
+        val applied = hardware.audioEnhancer.applyEqPreset(enabled, nextPreset)
+        if (enabled) hardware.audioEnhancer.playTacticalTone()
+        updateSettings { it.copy(effectSoundEnabled = enabled, eqPreset = nextPreset) }
+        showStatus(
+            if (enabled) {
+                if (applied) "Audio EQ: ${nextPreset.label}" else "Profile: ${nextPreset.label} (System EQ active)"
+            } else "Effect Sound: Standard"
+        )
+    }
+
+    fun cycleFrameRate() {
+        hardware.audioEnhancer.pulseHaptic(false)
+        val supported = _telemetry.value.supportedRefreshRates
+        val options = listOf(60, 90, 120, 144)
+        val currentIdx = options.indexOf(settings.value.frameRateTarget).coerceAtLeast(0)
+        val next = options[(currentIdx + 1) % options.size]
+        updateSettings { it.copy(frameRateTarget = next) }
+        val maxSupported = supported.maxOrNull() ?: 60
+        val note = if (next > maxSupported) " (Panel max ${maxSupported}Hz)" else ""
+        showStatus("Frame Rate Target: ${next}Hz$note")
+    }
+
+    fun runPingTest() {
+        viewModelScope.launch {
+            showStatus("Measuring latency & jitter...")
+            val (ping, jitter) = hardware.measurePingWithJitter()
+            lastPingMs = ping
+            lastJitterMs = jitter
+            _telemetry.value = hardware.readHardwareTelemetry(
+                cpuMode = settings.value.cpuMode,
+                lastPingMs = ping,
+                lastJitterMs = jitter,
+                actualFps = measuredFps,
+                frameTimeMs = measuredFrameMs
+            )
+            if (ping != null) {
+                updateSettings { it.copy(reducePingEnabled = true) }
+                showStatus("Ping: ${ping}ms • Jitter: ${jitter ?: 0}ms (${_telemetry.value.networkType})")
+            } else {
+                showStatus("Network offline — connect Wi-Fi or Data")
+            }
+        }
+    }
+
+    fun performBoost() {
+        hardware.audioEnhancer.pulseHaptic(true)
+        viewModelScope.launch {
+            val allPackages = _installedApps.value.map { it.packageName }
+            val result = hardware.performRealMemoryBoost(
+                protectedPackages = settings.value.addedGamePackages,
+                allKnownPackages = allPackages
+            )
+            updateSettings {
+                it.copy(
+                    totalBoostCount = it.totalBoostCount + 1,
+                    lastFreedMb = result.freedMb
+                )
+            }
+            _telemetry.value = hardware.readHardwareTelemetry(
+                cpuMode = settings.value.cpuMode,
+                lastPingMs = lastPingMs,
+                lastJitterMs = lastJitterMs,
+                actualFps = measuredFps,
+                frameTimeMs = measuredFrameMs
+            )
+            showStatus("Boosted! Freed ${result.freedMb} MB • Trimmed ${result.trimmedPackages} apps")
+        }
+    }
+
+    fun clearCache() {
+        hardware.audioEnhancer.pulseHaptic(false)
+        viewModelScope.launch {
+            val freedKb = hardware.clearAppCaches()
+            showStatus("Cache cleared — ${freedKb} KB reclaimed")
+        }
+    }
+
+    fun engageTurboX() {
+        hardware.audioEnhancer.pulseHaptic(true)
+        val next = !settings.value.turboXMode
+        updateSettings { s ->
+            s.copy(
+                turboXMode = next,
+                cpuMode = if (next) CpuMode.ACCELERATION else CpuMode.BALANCED,
+                increaseCpuPerformance = next,
+                increaseGpuPerformance = next,
+                highPerfFpsControl = next,
+                activeInfoHud = if (next) true else s.activeInfoHud
+            )
+        }
+        if (next) {
+            hardware.audioEnhancer.applyEqPreset(true, settings.value.eqPreset)
+            performBoost()
+        } else {
+            showStatus("Turbo X Overdrive Disengaged")
+        }
+    }
+
+    fun captureScreenshot(activity: Activity?) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        if (activity != null) {
+            ScreenshotHelper.captureActivityWindow(activity) { success, detail ->
+                showStatus(if (success) "Screenshot saved: $detail" else detail)
+            }
+        } else {
+            val ctx = getApplication<Application>()
+            ctx.startActivity(
+                Intent(ctx, ScreenCaptureActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+        }
+    }
+
+    fun setBrightness(fraction: Float) {
+        val clamped = fraction.coerceIn(0.05f, 1f)
+        _brightnessFraction.value = clamped
+        updateSettings { it.copy(lockedBrightnessValue = clamped) }
+        if (hardware.setBrightnessFraction(clamped)) {
+            _autoBrightness.value = false
+        }
+    }
+
+    fun toggleAutoBrightness() {
+        hardware.audioEnhancer.pulseHaptic(false)
+        val result = hardware.toggleAutoBrightness()
+        if (result == null) {
+            showStatus("Grant 'Modifying system settings' in Permissions to toggle AutoLight")
+        } else {
+            _autoBrightness.value = result
+            if (result) updateSettings { it.copy(lockBrightness = false) }
+            showStatus(if (result) "Auto-Brightness Enabled" else "Auto-Brightness Manual")
+        }
+    }
+
+    fun toggleAutoRotate() {
+        hardware.audioEnhancer.pulseHaptic(false)
+        val result = hardware.toggleAutoRotate()
+        if (result == null) {
+            showStatus("Grant 'Modifying system settings' in Permissions to toggle Auto-Rotate")
+        } else {
+            _autoRotate.value = result
+            updateSettings { it.copy(rotationLock = !result) }
+            showStatus(if (result) "Auto-Rotate Enabled" else "Rotation Locked")
+        }
+    }
+
+    fun setVolume(fraction: Float) {
+        val clamped = fraction.coerceIn(0f, 1f)
+        _volumeFraction.value = clamped
+        hardware.setVolumeFraction(clamped)
+    }
+
+    fun toggleDoNotDisturb() {
+        hardware.audioEnhancer.pulseHaptic(false)
+        val next = !settings.value.dndMode
+        if (hardware.setDoNotDisturb(next)) {
+            updateSettings { it.copy(dndMode = next) }
+            showStatus(if (next) "Do Not Disturb Activated" else "Do Not Disturb Off")
+        } else {
+            showStatus("Grant 'Do Not Disturb' permission in Permissions first")
+        }
+    }
+
+    fun toggleNoNotifications() {
+        hardware.audioEnhancer.pulseHaptic(false)
+        val next = !settings.value.notificationMuteMode
+        hardware.audioEnhancer.setNotificationMuted(next)
+        updateSettings { it.copy(notificationMuteMode = next) }
+        showStatus(if (next) "Notification Sound Muted" else "Notification Sound Restored")
+    }
+
+    fun openInAppOverlay() {
+        hardware.audioEnhancer.pulseHaptic(false)
+        _isInAppOverlayOpen.value = true
+    }
+
+    fun closeInAppOverlay() {
+        _isInAppOverlayOpen.value = false
+    }
+
+    fun startFloatingOverlayService() {
+        val ctx = getApplication<Application>()
+        if (!hardware.checkPermissions().overlayGranted) {
+            showStatus("Grant 'Allow floating windows' permission for system overlay")
+            _isInAppOverlayOpen.value = true
+            return
+        }
+        val intent = Intent(ctx, GameOverlayService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ctx.startForegroundService(intent)
+        } else {
+            ctx.startService(intent)
+        }
+        _isOverlayServiceRunning.value = true
+        showStatus("Floating Game Turbo handle activated")
+    }
+
+    fun stopFloatingOverlayService() {
+        val ctx = getApplication<Application>()
+        ctx.stopService(Intent(ctx, GameOverlayService::class.java))
+        _isOverlayServiceRunning.value = false
+    }
+
+    fun launchSelectedGame() {
+        val s = settings.value
+        val pkg = s.selectedGamePackage ?: addedGames.value.firstOrNull()?.packageName
+        if (pkg == null) {
+            showStatus("Tap '+' to add a game to your Launcher first")
+            return
+        }
+        val gameName = addedGames.value.find { it.packageName == pkg }?.appName ?: pkg
+        viewModelScope.launch {
+            hardware.audioEnhancer.pulseHaptic(true)
+            if (s.openingAnimation) {
+                _launchingGameName.value = gameName
+                delay(950L)
+                _launchingGameName.value = null
+            }
+            if (s.autoDndOnEnter || s.dndMode) {
+                hardware.setDoNotDisturb(true)
+            }
+            if (s.muteNotificationsInGame || s.notificationMuteMode) {
+                hardware.audioEnhancer.setNotificationMuted(true)
+            }
+            if (s.lockBrightness) {
+                hardware.setAutoBrightness(false)
+                hardware.setBrightnessFraction(_brightnessFraction.value)
+            }
+            if (s.rotationLock) {
+                hardware.setAutoRotate(false)
+            }
+            if (s.effectSoundEnabled && s.eqPreset != EqPreset.OFF) {
+                hardware.audioEnhancer.applyEqPreset(true, s.eqPreset)
+            }
+            if (s.preventMemoryLeaks) {
+                val allPkgs = _installedApps.value.map { it.packageName }
+                hardware.performRealMemoryBoost(
+                    protectedPackages = s.addedGamePackages + pkg,
+                    allKnownPackages = allPkgs
+                )
+            }
+            if (hardware.checkPermissions().overlayGranted) {
+                startFloatingOverlayService()
+            }
+            _sessionHistory.value = listOf(
+                GameSessionRecord(
+                    packageName = pkg,
+                    appName = gameName,
+                    timestampMillis = System.currentTimeMillis(),
+                    cpuMode = s.cpuMode
+                )
+            ) + _sessionHistory.value.take(19)
+            updateSettings { it.copy(totalUsageMinutes = it.totalUsageMinutes + 1) }
+
+            val launched = hardware.launchPackage(pkg)
+            if (!launched) {
+                showStatus("Could not launch $gameName — opening Game Panel")
+                _isInAppOverlayOpen.value = true
+            }
+        }
+    }
+
+    fun showStatus(message: String) {
+        _statusMessage.value = message
+    }
+
+    fun clearStatus() {
+        _statusMessage.value = null
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        hardware.audioEnhancer.releaseEffects()
+    }
+}
