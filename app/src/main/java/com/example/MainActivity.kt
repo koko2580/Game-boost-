@@ -1,6 +1,5 @@
 package com.example
 
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Bundle
@@ -35,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -100,8 +98,6 @@ class MainActivity : ComponentActivity() {
             val launchingGameName by viewModel.launchingGameName.collectAsStateWithLifecycle()
             val statusMessage by viewModel.statusMessage.collectAsStateWithLifecycle()
             val isOverlayServiceRunning by viewModel.isOverlayServiceRunning.collectAsStateWithLifecycle()
-
-            val activity = LocalContext.current as? Activity
 
             // Real Choreographer FPS measurement
             DisposableEffect(Unit) {
@@ -335,7 +331,7 @@ class MainActivity : ComponentActivity() {
                                 onToggleNoNotifications = viewModel::toggleNoNotifications,
                                 onToggleDnd = viewModel::toggleDoNotDisturb,
                                 onOpenWifi = viewModel.hardware::openWifiSettingsPanel,
-                                onScreenshotInfo = { viewModel.captureScreenshot(activity) },
+                                onScreenshotInfo = { viewModel.captureScreenshot(this@MainActivity) },
                                 onQuickApp = viewModel.hardware::launchQuickShortcut
                             )
                         )
