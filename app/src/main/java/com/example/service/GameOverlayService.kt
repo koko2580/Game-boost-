@@ -138,12 +138,17 @@ class GameOverlayService : Service() {
     @Volatile
     private var liveFrameMs = 16.6f
     private var knownPackages: List<String> = emptyList()
+    @Volatile
+    private var latestSettings: GameTurboSettings = GameTurboSettings()
+    private var hudPassThroughParams: WindowManager.LayoutParams? = null
 
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (!isRunning) return
             if (lastFrameNs > 0L) {
-                liveFrameMs = ((frameTimeNanos - lastFrameNs).coerceAtLeast(1_000_000L)) / 1_000_000f
+                val deltaNs = (frameTimeNanos - lastFrameNs).coerceAtLeast(1_000_000L)
+                liveFrameMs = deltaNs / 1_000_000f
+                hardware.performanceEngine.reportFrameDurationNanos(deltaNs, latestSettings)
             }
             lastFrameNs = frameTimeNanos
             if (windowStartNs == 0L) windowStartNs = frameTimeNanos
@@ -190,8 +195,28 @@ class GameOverlayService : Service() {
         telemetryJob?.cancel()
         telemetryJob = serviceScope.launch {
             knownPackages = hardware.loadLaunchableApps().map { it.packageName }
+            val (_, supportedRates) = hardware.readDisplayRefreshInfo()
+            launch {
+                repo.settingsFlow.collect { s ->
+                    latestSettings = s
+                    hardware.performanceEngine.applyProfile(
+                        settings = s,
+                        supportedRates = supportedRates,
+                        isInGameLaunch = true
+                    )
+                    hudPassThroughParams?.let { hp ->
+                        hardware.performanceEngine.applyToOverlayWindowParams(hp, s, supportedRates, hudPassThroughView)
+                        hudPassThroughView?.let { hv -> runCatching { windowManager.updateViewLayout(hv, hp) } }
+                    }
+                    controlLayoutParams?.let { cp ->
+                        hardware.performanceEngine.applyToOverlayWindowParams(cp, s, supportedRates, controlView)
+                        controlView?.let { cv -> runCatching { windowManager.updateViewLayout(cv, cp) } }
+                    }
+                }
+            }
             while (true) {
                 val settings = repo.settingsFlow.first()
+                latestSettings = settings
                 telemetryFlow.value = hardware.readHardwareTelemetry(
                     cpuMode = settings.cpuMode,
                     lastPingMs = telemetryFlow.value.pingMs,
@@ -240,7 +265,9 @@ class GameOverlayService : Service() {
             }
         }
         hudPassThroughView = hudView
-        windowManager.addView(hudView, createHudPassThroughParams())
+        val hudParams = createHudPassThroughParams()
+        hudPassThroughParams = hudParams
+        windowManager.addView(hudView, hudParams)
 
         // 2. Interactive Handle / Expandable Dual-Wing Control Panel
         val ctrlView = ComposeView(this).apply {
@@ -285,7 +312,9 @@ class GameOverlayService : Service() {
             }
         }
         controlView = ctrlView
-        val params = createControlParams(expanded = false, layout = ControlPanelLayout.TOP_G_HANDLE)
+        val params = createControlParams(expanded = false, layout = latestSettings.controlPanelLayout)
+        val (_, supportedRates) = hardware.readDisplayRefreshInfo()
+        hardware.performanceEngine.applyToOverlayWindowParams(params, latestSettings, supportedRates, ctrlView)
         controlLayoutParams = params
         windowManager.addView(ctrlView, params)
     }
@@ -294,8 +323,9 @@ class GameOverlayService : Service() {
         val params = controlLayoutParams ?: return
         val view = controlView ?: return
         if (isExpanded) return
-        params.x = (params.x + dx.roundToInt())
-        params.y = (params.y + dy.roundToInt())
+        val mult = hardware.performanceEngine.computeScrollMultiplier(latestSettings)
+        params.x = (params.x + (dx * mult).roundToInt())
+        params.y = (params.y + (dy * mult).roundToInt())
         runCatching { windowManager.updateViewLayout(view, params) }
     }
 
@@ -303,6 +333,8 @@ class GameOverlayService : Service() {
         isExpanded = expand
         val view = controlView ?: return
         val params = createControlParams(expand, layout)
+        val (_, supportedRates) = hardware.readDisplayRefreshInfo()
+        hardware.performanceEngine.applyToOverlayWindowParams(params, latestSettings, supportedRates, view)
         controlLayoutParams = params
         runCatching { windowManager.updateViewLayout(view, params) }
     }
@@ -575,7 +607,7 @@ class GameOverlayService : Service() {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Turbo Game X Overlay",
+                "Turbo X Overlay",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Active floating Game Turbo HUD service"
@@ -599,7 +631,7 @@ class GameOverlayService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Turbo Game X Active")
+            .setContentTitle("Turbo X Active")
             .setContentText("Tap floating handle to open Game Control Panel")
             .setContentIntent(openIntent)
             .addAction(0, "Stop Overlay", stopIntent)
@@ -614,6 +646,7 @@ class GameOverlayService : Service() {
         telemetryJob?.cancel()
         serviceScope.cancel()
         // Restore system states cleanly on exit
+        hardware.performanceEngine.closeSession()
         hardware.audioEnhancer.setNotificationMuted(false)
         hardware.audioEnhancer.releaseEffects()
         hardware.setDoNotDisturb(false)

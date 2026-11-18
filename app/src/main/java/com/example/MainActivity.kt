@@ -14,27 +14,36 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -49,12 +58,15 @@ import com.example.data.ScreenColorMode
 import com.example.service.GameOverlayService
 import com.example.ui.components.CrosshairOverlay
 import com.example.ui.components.GamePanelOverlayContent
+import com.example.ui.components.LocalTurboTouchConfig
 import com.example.ui.components.OverlayCallbacks
 import com.example.ui.components.RewardedAdDialog
+import com.example.ui.components.TurboTouchConfig
 import com.example.ui.components.TurboXEmblem
 import com.example.ui.components.cpuModeColor
 import com.example.ui.screens.AddAppsScreen
 import com.example.ui.screens.LauncherHomeScreen
+import com.example.ui.screens.PerformanceActions
 import com.example.ui.screens.PermissionsScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.CyberBorder
@@ -66,6 +78,7 @@ import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.TurboGameXTheme
 import com.example.viewmodel.GameTurboViewModel
+import kotlin.math.roundToInt
 
 private const val ROUTE_LAUNCHER = "launcher"
 private const val ROUTE_SETTINGS = "settings"
@@ -104,8 +117,9 @@ class MainActivity : ComponentActivity() {
             val rewardedAdReady by viewModel.rewardedAdReady.collectAsStateWithLifecycle()
             val rewardedAdLoading by viewModel.rewardedAdLoading.collectAsStateWithLifecycle()
             val rewardedAdError by viewModel.rewardedAdError.collectAsStateWithLifecycle()
+            val performanceStatus by viewModel.performanceStatus.collectAsStateWithLifecycle()
 
-            // Real Choreographer FPS measurement
+            // Real Choreographer FPS measurement + ADPF frame duration reporting
             DisposableEffect(Unit) {
                 val callback = object : Choreographer.FrameCallback {
                     override fun doFrame(frameTimeNanos: Long) {
@@ -119,9 +133,23 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Apply real Window refresh rate, orientation lock, brightness, and immersive screen scaling
-            LaunchedEffect(settings.frameRateTarget) {
-                viewModel.hardware.applyPreferredRefreshRate(this@MainActivity, settings.frameRateTarget)
+            // Apply real Window refresh rate, ADPF hint, unbuffered touch, GPU pipeline, orientation, brightness & immersive scaling
+            LaunchedEffect(
+                settings.frameRateTarget,
+                settings.fpsGameTarget,
+                settings.highPerfFpsControl,
+                settings.cpuMode,
+                settings.increaseCpuPerformance,
+                settings.increaseGpuPerformance,
+                settings.forceGpuOpenGl,
+                settings.enableSkiaVulkan,
+                settings.enhanceTouchSensitivity,
+                settings.reduceTouchLatency,
+                settings.scrollingSensitivity,
+                settings.slidingFrictionIndex,
+                telemetry.supportedRefreshRates
+            ) {
+                viewModel.syncWindowPerformance(this@MainActivity)
             }
             LaunchedEffect(settings.rotationLock) {
                 requestedOrientation = if (settings.rotationLock) {
@@ -145,18 +173,27 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            TurboGameXTheme(wallpaperTheme = settings.wallpaperTheme) {
-                val navController = rememberNavController()
+            val touchConfig = remember(performanceStatus) {
+                TurboTouchConfig(
+                    scrollMultiplier = performanceStatus.scrollMultiplier,
+                    frictionFactor = performanceStatus.frictionFactor,
+                    unbufferedTouch = performanceStatus.unbufferedTouchActive
+                )
+            }
 
-                LaunchedEffect(pendingRoute) {
-                    val target = pendingRoute
-                    if (target != null && target != ROUTE_LAUNCHER) {
-                        navController.navigate(target) { launchSingleTop = true }
-                        pendingRoute = null
+            CompositionLocalProvider(LocalTurboTouchConfig provides touchConfig) {
+                TurboGameXTheme(wallpaperTheme = settings.wallpaperTheme) {
+                    val navController = rememberNavController()
+
+                    LaunchedEffect(pendingRoute) {
+                        val target = pendingRoute
+                        if (target != null && target != ROUTE_LAUNCHER) {
+                            navController.navigate(target) { launchSingleTop = true }
+                            pendingRoute = null
+                        }
                     }
-                }
 
-                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                     NavHost(
                         navController = navController,
                         startDestination = ROUTE_LAUNCHER
@@ -197,15 +234,36 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(ROUTE_SETTINGS) {
+                            val perfActions = remember(viewModel) {
+                                PerformanceActions(
+                                    onSetFpsGameTarget = viewModel::setFpsGameTarget,
+                                    onSetFrameRateTarget = viewModel::setFrameRateTarget,
+                                    onSetSlidingFrictionIndex = viewModel::setSlidingFrictionIndex,
+                                    onSetScrollingSensitivity = viewModel::setScrollingSensitivity,
+                                    onSetEnhanceTouchSensitivity = viewModel::setEnhanceTouchSensitivity,
+                                    onSetReduceTouchLatency = viewModel::setReduceTouchLatency,
+                                    onSetIncreaseCpuPerformance = viewModel::setIncreaseCpuPerformance,
+                                    onSetIncreaseGpuPerformance = viewModel::setIncreaseGpuPerformance,
+                                    onSetForceGpuOpenGl = viewModel::setForceGpuOpenGl,
+                                    onSetEnableSkiaVulkan = viewModel::setEnableSkiaVulkan,
+                                    onSetHighPerfFpsControl = viewModel::setHighPerfFpsControl,
+                                    onOpenPermissions = { navController.navigate(ROUTE_PERMISSIONS) },
+                                    onOpenDeveloperOptions = viewModel::openDeveloperRenderingOptions
+                                )
+                            }
                             SettingsScreen(
                                 settings = settings,
                                 telemetry = telemetry,
+                                performanceStatus = performanceStatus,
+                                permissions = permissions,
                                 statusMessage = statusMessage,
+                                performanceActions = perfActions,
                                 onUpdateSettings = viewModel::updateSettings,
                                 onBoostRam = viewModel::performBoost,
                                 onClearCache = viewModel::clearCache,
                                 onSelectWallpaperTheme = viewModel::setWallpaperTheme,
                                 onOpenPermissions = { navController.navigate(ROUTE_PERMISSIONS) },
+                                onDismissStatus = viewModel::clearStatus,
                                 onBack = {
                                     viewModel.maybeShowInterstitial(this@MainActivity) {
                                         navController.popBackStack()
@@ -258,12 +316,23 @@ class MainActivity : ComponentActivity() {
                         }
                         CrosshairOverlay(style = settings.crosshairStyle)
                         if (settings.activeInfoHud) {
+                            var hudOffsetX by remember { mutableFloatStateOf(0f) }
+                            var hudOffsetY by remember { mutableFloatStateOf(0f) }
                             Column(
                                 modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(start = 16.dp, top = 56.dp)
+                                    .align(Alignment.TopEnd)
+                                    .systemBarsPadding()
+                                    .padding(end = 16.dp, top = 62.dp)
+                                    .offset { IntOffset(hudOffsetX.roundToInt(), hudOffsetY.roundToInt()) }
+                                    .pointerInput(Unit) {
+                                        detectDragGestures { change, drag ->
+                                            change.consume()
+                                            hudOffsetX += drag.x
+                                            hudOffsetY += drag.y
+                                        }
+                                    }
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(ObsidianVoid.copy(alpha = 0.8f))
+                                    .background(ObsidianVoid.copy(alpha = 0.84f))
                                     .border(1.dp, CyberBorder, RoundedCornerShape(10.dp))
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
@@ -384,6 +453,7 @@ class MainActivity : ComponentActivity() {
                         onRetryLoad = viewModel::retryLoadRewardedAd,
                         onDismiss = viewModel::dismissAdDialog
                     )
+                    }
                 }
             }
         }

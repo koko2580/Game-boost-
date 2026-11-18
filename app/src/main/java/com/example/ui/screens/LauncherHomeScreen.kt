@@ -97,6 +97,7 @@ import com.example.ui.components.SlantedTabShape
 import com.example.ui.components.TurboXEmblem
 import com.example.ui.components.cpuModeColor
 import com.example.ui.components.formatCompactTurboClock
+import com.example.ui.components.rememberTurboFlingBehavior
 import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberElevated
@@ -463,6 +464,7 @@ fun LauncherHomeScreen(
                                     } else {
                                         LazyRow(
                                             horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            flingBehavior = rememberTurboFlingBehavior(),
                                             modifier = Modifier.weight(1f)
                                         ) {
                                             items(addedGames, key = { it.packageName }) { game ->
@@ -737,6 +739,7 @@ private fun GameDockList(
         LazyColumn(
             modifier = modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
+            flingBehavior = rememberTurboFlingBehavior(),
             contentPadding = PaddingValues(vertical = 4.dp)
         ) {
             items(games, key = { it.packageName }) { game ->
@@ -1004,7 +1007,7 @@ private fun DataBasePageContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberTurboFlingBehavior())
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {

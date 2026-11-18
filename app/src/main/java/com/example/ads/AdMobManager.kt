@@ -3,6 +3,8 @@ package com.example.ads
 import android.app.Activity
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -94,15 +96,20 @@ class AdMobManager(private val appContext: Context) {
     fun initialize(currentActivityProvider: () -> Activity? = { null }) {
         if (isInitialized || isRobolectricEnvironment()) return
         isInitialized = true
-        runCatching {
-            MobileAds.initialize(appContext) {
-                loadAppOpenAd(currentActivityProvider)
-                loadInterstitialAd()
-                loadRewardedAd()
+        val mainHandler = Handler(Looper.getMainLooper())
+        Thread {
+            runCatching {
+                MobileAds.initialize(appContext) {
+                    mainHandler.post {
+                        loadAppOpenAd(currentActivityProvider)
+                        loadInterstitialAd()
+                        loadRewardedAd()
+                    }
+                }
+            }.onFailure { e ->
+                Log.e(TAG, "MobileAds init failed", e)
             }
-        }.onFailure { e ->
-            Log.e(TAG, "MobileAds init failed", e)
-        }
+        }.start()
     }
 
     // region App Open Ad

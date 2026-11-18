@@ -33,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,10 +55,14 @@ import com.example.data.CpuMode
 import com.example.data.CpuUnitFormat
 import com.example.data.GameTurboSettings
 import com.example.data.HardwareTelemetry
+import com.example.data.PerformanceEngineStatus
+import com.example.data.PermissionStatus
 import com.example.data.WallpaperTheme
 import com.example.ui.components.HolographicGaugeRing
 import com.example.ui.components.TurboTopLogoCorner
 import com.example.ui.components.cpuModeColor
+import com.example.ui.components.rememberTurboFlingBehavior
+import kotlinx.coroutines.delay
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberElevated
 import com.example.ui.theme.CyberSlate
@@ -87,16 +92,28 @@ private enum class SettingsCategory(val title: String) {
 fun SettingsScreen(
     settings: GameTurboSettings,
     telemetry: HardwareTelemetry,
+    performanceStatus: PerformanceEngineStatus,
+    permissions: PermissionStatus,
     statusMessage: String?,
+    performanceActions: PerformanceActions,
     onUpdateSettings: ((GameTurboSettings) -> GameTurboSettings) -> Unit,
     onBoostRam: () -> Unit,
     onClearCache: () -> Unit,
     onSelectWallpaperTheme: (WallpaperTheme, String?) -> Unit,
     onOpenPermissions: () -> Unit,
+    onDismissStatus: () -> Unit,
     onBack: () -> Unit
 ) {
     val accent = LocalTurboAccent.current.accent
+    val turboFling = rememberTurboFlingBehavior()
     var selectedCategory by remember { mutableStateOf(SettingsCategory.DISTURBANCE) }
+
+    LaunchedEffect(statusMessage) {
+        if (statusMessage != null) {
+            delay(2800L)
+            onDismissStatus()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -136,7 +153,9 @@ fun SettingsScreen(
                 Text(
                     text = statusMessage,
                     style = MaterialTheme.typography.labelSmall,
-                    color = accent
+                    color = accent,
+                    maxLines = 2,
+                    modifier = Modifier.padding(start = 12.dp)
                 )
             }
         }
@@ -202,13 +221,16 @@ fun SettingsScreen(
                             .weight(1f)
                             .fillMaxHeight()
                             .background(ObsidianVoid)
-                            .verticalScroll(rememberScrollState())
+                            .verticalScroll(rememberScrollState(), flingBehavior = turboFling)
                             .padding(horizontal = 24.dp, vertical = 16.dp)
                     ) {
                         SettingsCategoryDetail(
                             category = selectedCategory,
                             settings = settings,
                             telemetry = telemetry,
+                            performanceStatus = performanceStatus,
+                            permissions = permissions,
+                            performanceActions = performanceActions,
                             onUpdateSettings = onUpdateSettings,
                             onBoostRam = onBoostRam,
                             onClearCache = onClearCache,
@@ -224,7 +246,7 @@ fun SettingsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(Color(0xFF151824))
-                            .horizontalScroll(rememberScrollState())
+                            .horizontalScroll(rememberScrollState(), flingBehavior = turboFling)
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -232,6 +254,7 @@ fun SettingsScreen(
                             val isSelected = category == selectedCategory
                             Box(
                                 modifier = Modifier
+                                    .testTag("settings_cat_${category.name}")
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(if (isSelected) accent else CyberSlate)
                                     .clickable { selectedCategory = category }
@@ -250,13 +273,16 @@ fun SettingsScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
+                            .verticalScroll(rememberScrollState(), flingBehavior = turboFling)
                             .padding(16.dp)
                     ) {
                         SettingsCategoryDetail(
                             category = selectedCategory,
                             settings = settings,
                             telemetry = telemetry,
+                            performanceStatus = performanceStatus,
+                            permissions = permissions,
+                            performanceActions = performanceActions,
                             onUpdateSettings = onUpdateSettings,
                             onBoostRam = onBoostRam,
                             onClearCache = onClearCache,
@@ -275,6 +301,9 @@ private fun SettingsCategoryDetail(
     category: SettingsCategory,
     settings: GameTurboSettings,
     telemetry: HardwareTelemetry,
+    performanceStatus: PerformanceEngineStatus,
+    permissions: PermissionStatus,
+    performanceActions: PerformanceActions,
     onUpdateSettings: ((GameTurboSettings) -> GameTurboSettings) -> Unit,
     onBoostRam: () -> Unit,
     onClearCache: () -> Unit,
@@ -329,7 +358,10 @@ private fun SettingsCategoryDetail(
         SettingsCategory.PERFORMANCE -> {
             PerformanceSettingsSection(
                 settings = settings,
-                onUpdateSettings = onUpdateSettings
+                telemetry = telemetry,
+                engineStatus = performanceStatus,
+                permissions = permissions,
+                actions = performanceActions
             )
         }
 
@@ -686,7 +718,7 @@ private fun AboutAppSection(
     val accent = LocalTurboAccent.current.accent
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-            text = "Turbo Game X",
+            text = "Turbo X",
             style = MaterialTheme.typography.headlineMedium.copy(fontFamily = RajdhaniFontFamily),
             color = accent
         )

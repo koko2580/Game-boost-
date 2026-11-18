@@ -40,6 +40,7 @@ class SystemHardwareController(private val context: Context) {
 
     private val iconCache = ConcurrentHashMap<String, ImageBitmap>()
     val audioEnhancer = GameAudioEnhancer(context)
+    val performanceEngine = PerformanceTuningEngine(context)
 
     fun checkPermissions(): PermissionStatus {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
@@ -232,6 +233,9 @@ class SystemHardwareController(private val context: Context) {
         val (refreshRate, supportedRates) = readDisplayRefreshInfo()
         val (netType, linkMbps, rssiDbm) = readNetworkSummary()
 
+        val gpuInfo = performanceEngine.queryGpuPipelineInfo()
+        val gpuSummary = "${gpuInfo.rendererName} • GLES ${gpuInfo.glEsVersion} • ${gpuInfo.vulkanVersionLabel}"
+
         return HardwareTelemetry(
             cpuFreqMHz = activeFreq,
             cpuCoreCount = coreCount,
@@ -247,7 +251,7 @@ class SystemHardwareController(private val context: Context) {
             supportedRefreshRates = supportedRates,
             actualFps = actualFps,
             frameTimeMs = frameTimeMs,
-            gpuRenderer = "${Build.HARDWARE.uppercase()} • ${Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64"}",
+            gpuRenderer = gpuSummary,
             deviceModel = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
             androidVersion = Build.VERSION.RELEASE ?: "14",
             pingMs = lastPingMs,
@@ -277,7 +281,7 @@ class SystemHardwareController(private val context: Context) {
         return result
     }
 
-    private fun readDisplayRefreshInfo(): Pair<Int, List<Int>> {
+    fun readDisplayRefreshInfo(): Pair<Int, List<Int>> {
         return runCatching {
             val display: Display? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 context.display

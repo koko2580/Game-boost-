@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Turbo Game X"
+rootProject.name = "Turbo X"
 
 include(":app")

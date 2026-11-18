@@ -56,12 +56,18 @@ import com.example.data.FPS_GAME_OPTIONS
 import com.example.data.FRAME_RATE_OPTIONS
 import com.example.data.GamePanelStyle
 import com.example.data.GameTurboSettings
+import com.example.data.HardwareTelemetry
+import com.example.data.PerformanceEngineStatus
+import com.example.data.PermissionStatus
 import com.example.data.SCROLLING_SENSITIVITY_TICKS
 import com.example.data.SLIDING_FRICTION_LABELS
 import com.example.ui.components.CyberToggleSwitch
 import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.CyberBorder
+import com.example.ui.theme.CyberElevated
 import com.example.ui.theme.CyberSlate
+import com.example.ui.theme.ElectricCyan
+import com.example.ui.theme.EmeraldBright
 import com.example.ui.theme.LocalTurboAccent
 import com.example.ui.theme.MidnightSurface
 import com.example.ui.theme.ObsidianVoid
@@ -69,6 +75,23 @@ import com.example.ui.theme.RajdhaniFontFamily
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import java.util.Locale
+
+data class PerformanceActions(
+    val onSetFpsGameTarget: (Int) -> Unit,
+    val onSetFrameRateTarget: (Int) -> Unit,
+    val onSetSlidingFrictionIndex: (Int) -> Unit,
+    val onSetScrollingSensitivity: (Int) -> Unit,
+    val onSetEnhanceTouchSensitivity: (Boolean) -> Unit,
+    val onSetReduceTouchLatency: (Boolean) -> Unit,
+    val onSetIncreaseCpuPerformance: (Boolean) -> Unit,
+    val onSetIncreaseGpuPerformance: (Boolean) -> Unit,
+    val onSetForceGpuOpenGl: (Boolean) -> Unit,
+    val onSetEnableSkiaVulkan: (Boolean) -> Unit,
+    val onSetHighPerfFpsControl: (Boolean) -> Unit,
+    val onOpenPermissions: () -> Unit,
+    val onOpenDeveloperOptions: () -> Unit
+)
 
 @Composable
 fun SettingToggleRow(
@@ -119,11 +142,15 @@ fun SettingToggleRow(
 @Composable
 fun PerformanceSettingsSection(
     settings: GameTurboSettings,
-    onUpdateSettings: ((GameTurboSettings) -> GameTurboSettings) -> Unit
+    telemetry: HardwareTelemetry,
+    engineStatus: PerformanceEngineStatus,
+    permissions: PermissionStatus,
+    actions: PerformanceActions
 ) {
     val accent = LocalTurboAccent.current.accent
     var helpDialogTitle by remember { mutableStateOf<String?>(null) }
     var helpDialogBody by remember { mutableStateOf("") }
+    val panelMaxHz = telemetry.supportedRefreshRates.maxOrNull() ?: 60
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -134,10 +161,74 @@ fun PerformanceSettingsSection(
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "Device profile targets frame pacing, touch responsiveness, and GPU pipeline behavior.",
+            text = "Real-time ADPF performance hinting, refresh-rate locking, unbuffered touch dispatch, and GPU pipeline tuning.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Live Performance Engine Diagnostics Card
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(MidnightSurface)
+                .border(1.dp, accent.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "ACTIVE ENGINE STATUS",
+                    style = MaterialTheme.typography.labelLarge.copy(fontFamily = RajdhaniFontFamily),
+                    color = accent
+                )
+                Text(
+                    text = "Thermal: ${engineStatus.thermalStatusLabel}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (engineStatus.thermalStatusLabel == "NORMAL") EmeraldBright else CyberAmber
+                )
+            }
+            EngineStatLine(
+                label = "Display & FPS",
+                value = "${engineStatus.appliedDisplayModeHz}Hz mode • ${telemetry.actualFps} FPS live (Max ${panelMaxHz}Hz)",
+                valueColor = EmeraldBright
+            )
+            EngineStatLine(
+                label = "CPU Boost Engine",
+                value = buildString {
+                    append(if (engineStatus.adpfHintActive) "ADPF Hint (${String.format(Locale.US, "%.1f", engineStatus.adpfTargetDurationMs)}ms)" else "Thread Priority")
+                    if (engineStatus.gameStateActive) append(" • GameState")
+                },
+                valueColor = if (engineStatus.adpfHintActive || engineStatus.threadPriorityBoosted) ElectricCyan else TextSecondary
+            )
+            EngineStatLine(
+                label = "GPU Pipeline",
+                value = "${engineStatus.activeGpuPipelineLabel} • ${engineStatus.gpuInfo.rendererName}",
+                valueColor = TextPrimary
+            )
+            EngineStatLine(
+                label = "Touch & Scroll",
+                value = "${if (engineStatus.unbufferedTouchActive) "Unbuffered Dispatch ON" else "Standard Dispatch"} • Glide x${String.format(Locale.US, "%.2f", engineStatus.scrollMultiplier * engineStatus.frictionFactor)}",
+                valueColor = if (engineStatus.unbufferedTouchActive) EmeraldBright else TextSecondary
+            )
+            if (!permissions.writeSettingsGranted) {
+                Text(
+                    text = "Tip: Grant 'Modify System Settings' to sync system pointer speed (${engineStatus.appliedPointerSpeed}). Tap here ->",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CyberAmber,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { actions.onOpenPermissions() }
+                        .padding(vertical = 4.dp)
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(10.dp))
         HorizontalDivider(color = CyberBorder.copy(alpha = 0.5f))
 
@@ -147,14 +238,12 @@ fun PerformanceSettingsSection(
             title = "FPS Game",
             labels = listOf("OFF", "90", "120", "144"),
             selectedIndex = fpsIdx,
-            description = "Increases the game's FPS target profile. Support depends on display and game engine.",
+            description = "Locks game refresh target & ADPF frame budget (90/120/144 FPS) across launcher & overlay.",
             accentColor = accent,
-            onIndexChange = { idx ->
-                onUpdateSettings { it.copy(fpsGameTarget = FPS_GAME_OPTIONS[idx]) }
-            },
+            onIndexChange = { idx -> actions.onSetFpsGameTarget(FPS_GAME_OPTIONS[idx]) },
             onHelpClick = {
                 helpDialogTitle = "FPS Game Target"
-                helpDialogBody = "Configures your preferred FPS ceiling (90, 120, or 144 FPS) for supported titles."
+                helpDialogBody = "Targets 90/120/144Hz on the display window & ADPF PowerHAL budget while Gaming Mode is active."
             }
         )
 
@@ -164,14 +253,12 @@ fun PerformanceSettingsSection(
             title = "Frame Rate",
             labels = listOf("60", "90", "120", "144"),
             selectedIndex = frameIdx,
-            description = "Adjusts the refresh rate target, from low to high, depending on the device's capabilities.",
+            description = "Sets preferred Display.Mode refresh rate (panel supports up to ${panelMaxHz}Hz).",
             accentColor = accent,
-            onIndexChange = { idx ->
-                onUpdateSettings { it.copy(frameRateTarget = FRAME_RATE_OPTIONS[idx]) }
-            },
+            onIndexChange = { idx -> actions.onSetFrameRateTarget(FRAME_RATE_OPTIONS[idx]) },
             onHelpClick = {
                 helpDialogTitle = "Display Frame Rate"
-                helpDialogBody = "Selects the display refresh rate target used inside the Game Turbo HUD."
+                helpDialogBody = "Applies WindowManager.LayoutParams preferredDisplayModeId & preferredRefreshRate on both app & overlay windows."
             }
         )
 
@@ -180,14 +267,12 @@ fun PerformanceSettingsSection(
             title = "Sliding friction",
             labels = SLIDING_FRICTION_LABELS,
             selectedIndex = settings.slidingFrictionIndex.coerceIn(0, SLIDING_FRICTION_LABELS.lastIndex),
-            description = "The lower the value, the further and faster touch gestures can slide.",
+            description = "Lower friction increases fling glide & camera pan travel distance.",
             accentColor = accent,
-            onIndexChange = { idx ->
-                onUpdateSettings { it.copy(slidingFrictionIndex = idx) }
-            },
+            onIndexChange = { idx -> actions.onSetSlidingFrictionIndex(idx) },
             onHelpClick = {
                 helpDialogTitle = "Sliding Friction"
-                helpDialogBody = "Controls inertial glide damping for rapid camera panning in shooters and MOBAs."
+                helpDialogBody = "Scales swipe deceleration and inertial fling glide across Launcher & HUD controls."
             }
         )
 
@@ -198,59 +283,85 @@ fun PerformanceSettingsSection(
             title = "Scrolling sensitivity",
             labels = SCROLLING_SENSITIVITY_TICKS.map { it.toString() },
             selectedIndex = scrollIdx,
-            description = "The higher the value, the faster you can drag the screen.",
+            description = "Adjusts pointer & swipe responsiveness (-7 to +7); syncs system pointer speed when permitted.",
             accentColor = accent,
-            onIndexChange = { idx ->
-                onUpdateSettings { it.copy(scrollingSensitivity = SCROLLING_SENSITIVITY_TICKS[idx]) }
-            },
+            onIndexChange = { idx -> actions.onSetScrollingSensitivity(SCROLLING_SENSITIVITY_TICKS[idx]) },
             onHelpClick = {
                 helpDialogTitle = "Scrolling Sensitivity"
-                helpDialogBody = "Adjusts horizontal and vertical swipe responsiveness from -7 to +7."
+                helpDialogBody = "Applies swipe velocity scaling in Turbo X and writes Android pointer_speed (-7..+7) when Write Settings is granted."
             }
         )
 
         SettingToggleRow(
             title = "Enhance touch sensitivity",
-            subtitle = "It helps the touch screen respond faster.",
+            subtitle = "Enables unbuffered touchscreen dispatch & boosts swipe responsiveness by +18%.",
             checked = settings.enhanceTouchSensitivity,
-            onCheckedChange = { v -> onUpdateSettings { it.copy(enhanceTouchSensitivity = v) } }
+            onCheckedChange = actions.onSetEnhanceTouchSensitivity,
+            testTag = "perf_enhance_touch"
         )
         SettingToggleRow(
             title = "Reduce the latency of touch response",
-            subtitle = "This function helps increase pointer processing speed and reduce accumulated latency.",
+            subtitle = "Disables VSync input batching via requestUnbufferedDispatch & elevates UI thread to URGENT_DISPLAY.",
             checked = settings.reduceTouchLatency,
-            onCheckedChange = { v -> onUpdateSettings { it.copy(reduceTouchLatency = v) } }
+            onCheckedChange = actions.onSetReduceTouchLatency,
+            testTag = "perf_reduce_latency"
         )
         SettingToggleRow(
             title = "Increase CPU performance",
-            subtitle = "Enhances CPU performance to help process faster.",
+            subtitle = "Engages ADPF PerformanceHintManager, Android GameState, Acceleration mode & trims background RAM.",
             checked = settings.increaseCpuPerformance,
-            onCheckedChange = { v -> onUpdateSettings { it.copy(increaseCpuPerformance = v) } }
+            onCheckedChange = actions.onSetIncreaseCpuPerformance,
+            testTag = "perf_cpu_boost"
         )
         SettingToggleRow(
             title = "Increase GPU performance",
-            subtitle = "Improved GPU graphics rendering performance.",
+            subtitle = "Forces hardware acceleration, enables Wide Color Gamut (when supported) & tightens GPU frame budget.",
             checked = settings.increaseGpuPerformance,
-            onCheckedChange = { v -> onUpdateSettings { it.copy(increaseGpuPerformance = v) } }
+            onCheckedChange = actions.onSetIncreaseGpuPerformance,
+            testTag = "perf_gpu_boost"
         )
         SettingToggleRow(
             title = "Force GPU to process the UI (OpenGL)",
-            subtitle = "Use OpenGL for UI processing.",
+            subtitle = "Uses OpenGL ES (${engineStatus.gpuInfo.glEsVersion}) hardware UI pipeline (mutually exclusive with Vulkan).",
             checked = settings.forceGpuOpenGl,
-            onCheckedChange = { v -> onUpdateSettings { it.copy(forceGpuOpenGl = v) } }
+            onCheckedChange = actions.onSetForceGpuOpenGl,
+            testTag = "perf_force_opengl"
         )
         SettingToggleRow(
             title = "Enable Skia (Vulkan) UI rendering",
-            subtitle = "Enable Vulkan for more efficient UI graphics processing.",
+            subtitle = "Prioritizes Skia Vulkan (${engineStatus.gpuInfo.vulkanVersionLabel}) when supported by device hardware.",
             checked = settings.enableSkiaVulkan,
-            onCheckedChange = { v -> onUpdateSettings { it.copy(enableSkiaVulkan = v) } }
+            onCheckedChange = actions.onSetEnableSkiaVulkan,
+            testTag = "perf_skia_vulkan"
         )
         SettingToggleRow(
             title = "High performance FPS control",
-            subtitle = "Forces the CPU and GPU to process more FPS.",
+            subtitle = "Locks maximum panel refresh rate (${panelMaxHz}Hz) across app & floating overlay windows.",
             checked = settings.highPerfFpsControl,
-            onCheckedChange = { v -> onUpdateSettings { it.copy(highPerfFpsControl = v) } }
+            onCheckedChange = actions.onSetHighPerfFpsControl,
+            testTag = "perf_high_fps"
         )
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("btn_open_dev_rendering")
+                .clip(RoundedCornerShape(10.dp))
+                .background(CyberElevated)
+                .border(1.dp, CyberBorder, RoundedCornerShape(10.dp))
+                .clickable { actions.onOpenDeveloperOptions() }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "OPEN SYSTEM DEVELOPER RENDERING OPTIONS",
+                style = MaterialTheme.typography.labelLarge,
+                color = TextPrimary,
+                textAlign = TextAlign.Center
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
     }
 
     if (helpDialogTitle != null) {
@@ -262,6 +373,33 @@ fun PerformanceSettingsSection(
             confirmButton = {
                 TextButton(onClick = { helpDialogTitle = null }) { Text("OK") }
             }
+        )
+    }
+}
+
+@Composable
+private fun EngineStatLine(
+    label: String,
+    value: String,
+    valueColor: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = TextMuted,
+            modifier = Modifier.padding(end = 8.dp)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelSmall,
+            color = valueColor,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
         )
     }
 }

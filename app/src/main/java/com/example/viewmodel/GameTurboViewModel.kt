@@ -21,6 +21,7 @@ import com.example.data.GameTurboPreferencesRepository
 import com.example.data.GameTurboSettings
 import com.example.data.HardwareTelemetry
 import com.example.data.InstalledAppInfo
+import com.example.data.PerformanceEngineStatus
 import com.example.data.PermissionStatus
 import com.example.data.ScreenColorMode
 import com.example.data.SystemHardwareController
@@ -63,6 +64,8 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _permissions = MutableStateFlow(hardware.checkPermissions())
     val permissions: StateFlow<PermissionStatus> = _permissions.asStateFlow()
+
+    val performanceStatus: StateFlow<PerformanceEngineStatus> = hardware.performanceEngine.status
 
     private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
     val installedApps: StateFlow<List<InstalledAppInfo>> = _installedApps.asStateFlow()
@@ -148,6 +151,7 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         if (lastFrameNanos > 0L) {
             val deltaNs = (frameTimeNanos - lastFrameNanos).coerceAtLeast(1_000_000L)
             measuredFrameMs = deltaNs / 1_000_000f
+            hardware.performanceEngine.reportFrameDurationNanos(deltaNs, settings.value)
         }
         lastFrameNanos = frameTimeNanos
         if (windowStartNanos == 0L) windowStartNanos = frameTimeNanos
@@ -160,6 +164,15 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
             frameCountWindow = 0
             windowStartNanos = frameTimeNanos
         }
+    }
+
+    fun syncWindowPerformance(activity: Activity) {
+        hardware.performanceEngine.applyProfile(
+            settings = settings.value,
+            supportedRates = _telemetry.value.supportedRefreshRates,
+            activity = activity,
+            isInGameLaunch = false
+        )
     }
 
     fun refreshPermissionsAndHardware() {
@@ -364,6 +377,144 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
             if (next.dndMode != prev.dndMode) {
                 hardware.setDoNotDisturb(next.dndMode)
             }
+            hardware.performanceEngine.applyProfile(
+                settings = next,
+                supportedRates = _telemetry.value.supportedRefreshRates
+            )
+        }
+    }
+
+    fun setFpsGameTarget(targetFps: Int) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(fpsGameTarget = targetFps) }
+        val maxSupported = _telemetry.value.supportedRefreshRates.maxOrNull() ?: 60
+        showStatus(
+            if (targetFps == 0) "FPS Game Target: Auto"
+            else "FPS Game Target: ${targetFps}Hz (Panel max ${maxSupported}Hz)"
+        )
+    }
+
+    fun setFrameRateTarget(targetHz: Int) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(frameRateTarget = targetHz) }
+        val maxSupported = _telemetry.value.supportedRefreshRates.maxOrNull() ?: 60
+        val note = if (targetHz > maxSupported) " (Panel max ${maxSupported}Hz)" else ""
+        showStatus("Display Frame Rate: ${targetHz}Hz$note")
+    }
+
+    fun setSlidingFrictionIndex(index: Int) {
+        updateSettings { it.copy(slidingFrictionIndex = index) }
+        val factor = com.example.data.SLIDING_FRICTION_FACTORS[index.coerceIn(0, com.example.data.SLIDING_FRICTION_FACTORS.lastIndex)]
+        val label = com.example.data.SLIDING_FRICTION_LABELS[index.coerceIn(0, com.example.data.SLIDING_FRICTION_LABELS.lastIndex)]
+        showStatus("Sliding Friction: $label (Glide x${String.format(java.util.Locale.US, "%.2f", factor)})")
+    }
+
+    fun setScrollingSensitivity(value: Int) {
+        updateSettings { it.copy(scrollingSensitivity = value.coerceIn(-7, 7)) }
+        val pointerOk = hardware.checkPermissions().writeSettingsGranted
+        val sign = if (value > 0) "+$value" else "$value"
+        showStatus(
+            if (pointerOk) "Scrolling Sensitivity $sign applied to touch & pointer"
+            else "Scrolling Sensitivity $sign (App & Overlay active)"
+        )
+    }
+
+    fun setEnhanceTouchSensitivity(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(enhanceTouchSensitivity = enabled) }
+        showStatus(
+            if (enabled) "Touch Sensitivity Enhanced (Unbuffered +18%)"
+            else "Standard Touch Sensitivity"
+        )
+    }
+
+    fun setReduceTouchLatency(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(reduceTouchLatency = enabled) }
+        showStatus(
+            if (enabled) "Unbuffered Touch Dispatch & Display Thread Priority ON"
+            else "Standard Touch Latency"
+        )
+    }
+
+    fun setIncreaseCpuPerformance(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(enabled)
+        updateSettings {
+            it.copy(
+                increaseCpuPerformance = enabled,
+                cpuMode = if (enabled) CpuMode.ACCELERATION else it.cpuMode
+            )
+        }
+        if (enabled) {
+            viewModelScope.launch {
+                val res = hardware.performRealMemoryBoost(
+                    protectedPackages = settings.value.addedGamePackages,
+                    allKnownPackages = _installedApps.value.map { it.packageName }
+                )
+                showStatus("CPU Boost Active (ADPF) • Freed ${res.freedMb} MB")
+            }
+        } else {
+            showStatus("CPU Performance Boost Off")
+        }
+    }
+
+    fun setIncreaseGpuPerformance(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(enabled)
+        updateSettings { it.copy(increaseGpuPerformance = enabled) }
+        showStatus(
+            if (enabled) "GPU Performance Boost + Hardware Color Pipeline Active"
+            else "GPU Performance Boost Off"
+        )
+    }
+
+    fun setForceGpuOpenGl(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings {
+            it.copy(
+                forceGpuOpenGl = enabled,
+                enableSkiaVulkan = if (enabled) false else it.enableSkiaVulkan
+            )
+        }
+        showStatus(
+            if (enabled) "UI Pipeline: Force GPU (OpenGL ES) enabled"
+            else "UI Pipeline: System Default"
+        )
+    }
+
+    fun setEnableSkiaVulkan(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        val gpuInfo = hardware.performanceEngine.queryGpuPipelineInfo()
+        if (enabled && !gpuInfo.vulkanSupported) {
+            updateSettings { it.copy(enableSkiaVulkan = false) }
+            showStatus("Vulkan hardware not supported on this device")
+            return
+        }
+        updateSettings {
+            it.copy(
+                enableSkiaVulkan = enabled,
+                forceGpuOpenGl = if (enabled) false else it.forceGpuOpenGl
+            )
+        }
+        showStatus(
+            if (enabled) "UI Pipeline: Skia (${gpuInfo.vulkanVersionLabel}) prioritized"
+            else "Skia Vulkan override Off"
+        )
+    }
+
+    fun setHighPerfFpsControl(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(enabled)
+        updateSettings { it.copy(highPerfFpsControl = enabled) }
+        val maxPanel = _telemetry.value.supportedRefreshRates.maxOrNull() ?: 60
+        showStatus(
+            if (enabled) "High Perf FPS Control Locked (${maxOf(settings.value.frameRateTarget, settings.value.fpsGameTarget, maxPanel)}Hz target)"
+            else "High Perf FPS Control Off"
+        )
+    }
+
+    fun openDeveloperRenderingOptions() {
+        val openedDev = hardware.performanceEngine.openDeveloperRenderingOptions()
+        if (!openedDev) {
+            showStatus("Enable Developer Options in About Phone -> Tap Build Number 7x")
         }
     }
 
@@ -690,7 +841,12 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         if (s.effectSoundEnabled && s.eqPreset != EqPreset.OFF) {
             hardware.audioEnhancer.applyEqPreset(true, s.eqPreset)
         }
-        if (s.preventMemoryLeaks) {
+        hardware.performanceEngine.applyProfile(
+            settings = s,
+            supportedRates = _telemetry.value.supportedRefreshRates,
+            isInGameLaunch = true
+        )
+        if (s.preventMemoryLeaks || s.increaseCpuPerformance || s.increaseGpuPerformance || s.highPerfFpsControl) {
             val allPkgs = _installedApps.value.map { it.packageName }
             hardware.performRealMemoryBoost(
                 protectedPackages = s.addedGamePackages + pkg,
@@ -727,6 +883,7 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
 
     override fun onCleared() {
         super.onCleared()
+        hardware.performanceEngine.closeSession()
         hardware.audioEnhancer.releaseEffects()
     }
 }

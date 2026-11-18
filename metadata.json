@@ -1,5 +1,5 @@
 {
-  "name": "Turbo Game X",
+  "name": "Turbo X",
   "description": "Gaming launcher, hardware performance monitor, and floating cyber HUD control panel.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

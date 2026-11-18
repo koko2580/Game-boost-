@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.InstalledAppInfo
 import com.example.ui.components.CyberToggleSwitch
 import com.example.ui.components.TurboTopLogoCorner
+import com.example.ui.components.rememberTurboFlingBehavior
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberElevated
 import com.example.ui.theme.CyberSlate
@@ -162,6 +163,7 @@ fun AddAppsScreen(
             }
         } else {
             LazyColumn(
+                flingBehavior = rememberTurboFlingBehavior(),
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
