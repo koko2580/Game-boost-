@@ -58,6 +58,7 @@ import com.example.data.HardwareTelemetry
 import com.example.data.PerformanceEngineStatus
 import com.example.data.PermissionStatus
 import com.example.data.WallpaperTheme
+import com.example.security.SecurityAuditReport
 import com.example.ui.components.HolographicGaugeRing
 import com.example.ui.components.TurboTopLogoCorner
 import com.example.ui.components.cpuModeColor
@@ -94,6 +95,7 @@ fun SettingsScreen(
     telemetry: HardwareTelemetry,
     performanceStatus: PerformanceEngineStatus,
     permissions: PermissionStatus,
+    securityAudit: SecurityAuditReport,
     statusMessage: String?,
     performanceActions: PerformanceActions,
     onUpdateSettings: ((GameTurboSettings) -> GameTurboSettings) -> Unit,
@@ -230,6 +232,7 @@ fun SettingsScreen(
                             telemetry = telemetry,
                             performanceStatus = performanceStatus,
                             permissions = permissions,
+                            securityAudit = securityAudit,
                             performanceActions = performanceActions,
                             onUpdateSettings = onUpdateSettings,
                             onBoostRam = onBoostRam,
@@ -282,6 +285,7 @@ fun SettingsScreen(
                             telemetry = telemetry,
                             performanceStatus = performanceStatus,
                             permissions = permissions,
+                            securityAudit = securityAudit,
                             performanceActions = performanceActions,
                             onUpdateSettings = onUpdateSettings,
                             onBoostRam = onBoostRam,
@@ -303,6 +307,7 @@ private fun SettingsCategoryDetail(
     telemetry: HardwareTelemetry,
     performanceStatus: PerformanceEngineStatus,
     permissions: PermissionStatus,
+    securityAudit: SecurityAuditReport,
     performanceActions: PerformanceActions,
     onUpdateSettings: ((GameTurboSettings) -> GameTurboSettings) -> Unit,
     onBoostRam: () -> Unit,
@@ -442,6 +447,7 @@ private fun SettingsCategoryDetail(
         SettingsCategory.ABOUT -> {
             AboutAppSection(
                 telemetry = telemetry,
+                securityAudit = securityAudit,
                 onOpenPermissions = onOpenPermissions
             )
         }
@@ -713,9 +719,11 @@ private fun WallpaperSettingsSection(
 @Composable
 private fun AboutAppSection(
     telemetry: HardwareTelemetry,
+    securityAudit: SecurityAuditReport,
     onOpenPermissions: () -> Unit
 ) {
     val accent = LocalTurboAccent.current.accent
+    val shortSig = securityAudit.signatureSha256.take(12).ifBlank { "Verified" }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
             text = "Turbo X",
@@ -730,6 +738,28 @@ private fun AboutAppSection(
         InfoRow("System Memory", "${telemetry.ramTotalMb} MB Total (${telemetry.ramAvailableMb} MB Free)")
         InfoRow("Display Refresh Rate", "${telemetry.displayRefreshRateHz} Hz")
         InfoRow("Graphics Pipeline", telemetry.gpuRenderer)
+
+        Spacer(modifier = Modifier.height(6.dp))
+        HorizontalDivider(color = CyberBorder.copy(alpha = 0.5f))
+        Text(
+            text = "SECURITY SHIELD & INTEGRITY",
+            style = MaterialTheme.typography.labelLarge.copy(fontFamily = RajdhaniFontFamily),
+            color = if (securityAudit.isSafeForGameplay) Color(0xFF00E676) else accent
+        )
+        InfoRow(
+            "APK & Signature Integrity",
+            if (securityAudit.packageIntegrityOk && !securityAudit.repackagedDebuggable) "Verified ($shortSig…)" else "Tamper Alert"
+        )
+        InfoRow(
+            "Anti-Debug & Anti-Hook",
+            if (!securityAudit.debuggerDetected && !securityAudit.hookingDetected) "Protected (No Frida/Xposed)" else "Hook / Debug Detected"
+        )
+        InfoRow(
+            "Credit Vault & Anti-Rollback",
+            if (securityAudit.clockTamperDetected) "Clock Tamper Blocked" else if (securityAudit.vaultKeystoreBacked) "Keystore AES-256-GCM" else "AES-256-GCM Sealed"
+        )
+        InfoRow("Network & Backup Policy", "HTTPS-Only TLS • Backup Disabled")
+
         Spacer(modifier = Modifier.height(8.dp))
         Button(
             onClick = onOpenPermissions,

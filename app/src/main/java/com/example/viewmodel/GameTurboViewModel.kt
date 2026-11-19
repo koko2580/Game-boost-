@@ -27,6 +27,7 @@ import com.example.data.ScreenColorMode
 import com.example.data.SystemHardwareController
 import com.example.data.WallpaperTheme
 import com.example.data.ScreenshotHelper
+import com.example.security.SecurityAuditReport
 import com.example.service.GameOverlayService
 import com.example.service.ScreenCaptureActivity
 import kotlinx.coroutines.delay
@@ -66,6 +67,9 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     val permissions: StateFlow<PermissionStatus> = _permissions.asStateFlow()
 
     val performanceStatus: StateFlow<PerformanceEngineStatus> = hardware.performanceEngine.status
+
+    private val _securityAudit = MutableStateFlow(repo.securityGuard.runSecurityAudit())
+    val securityAudit: StateFlow<SecurityAuditReport> = _securityAudit.asStateFlow()
 
     private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
     val installedApps: StateFlow<List<InstalledAppInfo>> = _installedApps.asStateFlow()
@@ -147,6 +151,12 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         startTurboTimeLoop()
     }
 
+    fun refreshSecurityAudit(): SecurityAuditReport {
+        val report = repo.securityGuard.runSecurityAudit()
+        _securityAudit.value = report
+        return report
+    }
+
     fun onChoreographerFrame(frameTimeNanos: Long) {
         if (lastFrameNanos > 0L) {
             val deltaNs = (frameTimeNanos - lastFrameNanos).coerceAtLeast(1_000_000L)
@@ -224,21 +234,33 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun startTurboTimeLoop() {
+        var maxObservedWallMs = System.currentTimeMillis()
         viewModelScope.launch {
             settings.collect { s ->
-                _remainingTurboSeconds.value = computeRemainingSeconds(s.turboTimeExpiresAtMs)
+                val rem = computeRemainingSeconds(s.turboTimeExpiresAtMs)
+                _remainingTurboSeconds.value = rem
             }
         }
         viewModelScope.launch {
             while (true) {
-                val rem = computeRemainingSeconds(settings.value.turboTimeExpiresAtMs)
-                _remainingTurboSeconds.value = rem
+                val now = System.currentTimeMillis()
+                if (now + 60_000L < maxObservedWallMs) {
+                    // System clock jumped backward during active session: re-verify against sealed vault
+                    _remainingTurboSeconds.value = repo.getRemainingTurboSecondsChecked()
+                    refreshSecurityAudit()
+                    showStatus("Clock tamper detected — using verified Turbo timer")
+                } else {
+                    if (now > maxObservedWallMs) maxObservedWallMs = now
+                    val rem = computeRemainingSeconds(settings.value.turboTimeExpiresAtMs)
+                    _remainingTurboSeconds.value = rem
+                }
                 delay(1000L)
             }
         }
     }
 
     private fun computeRemainingSeconds(expiresAtMs: Long): Long {
+        if (repo.lastVaultTamperDetected) return 0L
         val diffMs = expiresAtMs - System.currentTimeMillis()
         return if (diffMs <= 0L) 0L else (diffMs + 999L) / 1000L
     }
@@ -307,6 +329,11 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun grantOneHourReward(launchAfterReward: Boolean) {
+        val audit = refreshSecurityAudit()
+        if (!audit.isSafeForGameplay) {
+            showStatus("Security check failed: ${audit.reasons.firstOrNull() ?: "Tampered environment"}")
+            return
+        }
         hardware.audioEnhancer.playTacticalTone()
         hardware.audioEnhancer.pulseHaptic(true)
         viewModelScope.launch {
@@ -797,6 +824,12 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun launchSelectedGame() {
+        val audit = refreshSecurityAudit()
+        if (!audit.isSafeForGameplay) {
+            hardware.audioEnhancer.pulseHaptic(false)
+            showStatus("Security lock: ${audit.reasons.firstOrNull() ?: "APK integrity violation"}")
+            return
+        }
         val s = settings.value
         val pkg = s.selectedGamePackage ?: addedGames.value.firstOrNull()?.packageName
         if (pkg == null) {
@@ -804,15 +837,21 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         val gameName = addedGames.value.find { it.packageName == pkg }?.appName ?: pkg
-        val remaining = computeRemainingSeconds(s.turboTimeExpiresAtMs)
-        _remainingTurboSeconds.value = remaining
-        if (remaining <= 0L) {
-            hardware.audioEnhancer.pulseHaptic(false)
-            showStatus("No Turbo Time left! Watch 1 Ad for +1h:00m")
-            openWatchAdPrompt(targetGameName = gameName, launchAfterReward = true)
-            return
-        }
         viewModelScope.launch {
+            val remaining = repo.getRemainingTurboSecondsChecked()
+            _remainingTurboSeconds.value = remaining
+            if (repo.lastVaultTamperDetected) {
+                refreshSecurityAudit()
+                showStatus("Credit vault tamper detected — Turbo Time reset")
+                openWatchAdPrompt(targetGameName = gameName, launchAfterReward = true)
+                return@launch
+            }
+            if (remaining <= 0L) {
+                hardware.audioEnhancer.pulseHaptic(false)
+                showStatus("No Turbo Time left! Watch 1 Ad for +1h:00m")
+                openWatchAdPrompt(targetGameName = gameName, launchAfterReward = true)
+                return@launch
+            }
             launchGamePackage(pkg, s)
         }
     }

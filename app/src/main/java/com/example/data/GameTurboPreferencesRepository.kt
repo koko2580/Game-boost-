@@ -11,12 +11,20 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.security.AppSecurityGuard
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "game_turbo_prefs")
 
 class GameTurboPreferencesRepository(private val context: Context) {
+
+    val securityGuard = AppSecurityGuard(context)
+
+    @Volatile
+    var lastVaultTamperDetected: Boolean = false
+        private set
 
     private object Keys {
         val AUTO_DND = booleanPreferencesKey("auto_dnd_on_enter")
@@ -77,6 +85,7 @@ class GameTurboPreferencesRepository(private val context: Context) {
         val TOTAL_USAGE_MINUTES = intPreferencesKey("total_usage_minutes")
         val TURBO_TIME_EXPIRES_AT_MS = longPreferencesKey("turbo_time_expires_at_ms")
         val ADS_WATCHED_COUNT = intPreferencesKey("ads_watched_count")
+        val TURBO_TIME_VAULT_TOKEN = stringPreferencesKey("turbo_time_vault_v1")
     }
 
     val settingsFlow: Flow<GameTurboSettings> = context.dataStore.data.map { prefs ->
@@ -144,65 +153,97 @@ class GameTurboPreferencesRepository(private val context: Context) {
             prefs[Keys.TOTAL_BOOST_COUNT] = updated.totalBoostCount
             prefs[Keys.LAST_FREED_MB] = updated.lastFreedMb
             prefs[Keys.TOTAL_USAGE_MINUTES] = updated.totalUsageMinutes
-            prefs[Keys.TURBO_TIME_EXPIRES_AT_MS] = updated.turboTimeExpiresAtMs
-            prefs[Keys.ADS_WATCHED_COUNT] = updated.adsWatchedCount
+
+            // Seal Turbo Time & ad count with Android Keystore AES-256-GCM; purge plaintext keys
+            val sealed = securityGuard.sealTurboCredit(
+                expiresAtWallMs = updated.turboTimeExpiresAtMs,
+                adsWatchedCount = updated.adsWatchedCount
+            )
+            if (sealed != null) {
+                prefs[Keys.TURBO_TIME_VAULT_TOKEN] = sealed
+            }
+            prefs.remove(Keys.TURBO_TIME_EXPIRES_AT_MS)
+            prefs.remove(Keys.ADS_WATCHED_COUNT)
         }
     }
 
-    private fun decode(prefs: Preferences): GameTurboSettings = GameTurboSettings(
-        autoDndOnEnter = prefs[Keys.AUTO_DND] ?: true,
-        muteNotificationsInGame = prefs[Keys.MUTE_NOTIF] ?: false,
-        preventMemoryLeaks = prefs[Keys.PREVENT_MEMORY_LEAKS] ?: true,
-        disableThreeFingerScreenshot = prefs[Keys.DISABLE_THREE_FINGER] ?: false,
-        cpuUnitFormat = enumOrDefault(prefs[Keys.CPU_UNIT_FORMAT], CpuUnitFormat.MHZ),
-        cpuMode = enumOrDefault(prefs[Keys.CPU_MODE], CpuMode.ACCELERATION),
-        fpsGameTarget = prefs[Keys.FPS_GAME_TARGET] ?: 0,
-        frameRateTarget = prefs[Keys.FRAME_RATE_TARGET] ?: 60,
-        slidingFrictionIndex = prefs[Keys.SLIDING_FRICTION_INDEX] ?: 0,
-        scrollingSensitivity = prefs[Keys.SCROLLING_SENSITIVITY] ?: 0,
-        enhanceTouchSensitivity = prefs[Keys.ENHANCE_TOUCH] ?: false,
-        reduceTouchLatency = prefs[Keys.REDUCE_TOUCH_LATENCY] ?: false,
-        increaseCpuPerformance = prefs[Keys.INCREASE_CPU] ?: false,
-        increaseGpuPerformance = prefs[Keys.INCREASE_GPU] ?: false,
-        forceGpuOpenGl = prefs[Keys.FORCE_OPENGL] ?: false,
-        enableSkiaVulkan = prefs[Keys.ENABLE_VULKAN] ?: false,
-        highPerfFpsControl = prefs[Keys.HIGH_PERF_FPS] ?: false,
-        backgroundLimitIndex = prefs[Keys.BG_LIMIT_INDEX] ?: 0,
-        cacheLimitIndex = prefs[Keys.CACHE_LIMIT_INDEX] ?: 0,
-        wallpaperTheme = enumOrDefault(prefs[Keys.WALLPAPER_THEME], WallpaperTheme.OBSIDIAN_CRIMSON),
-        customWallpaperUri = prefs[Keys.CUSTOM_WALLPAPER_URI],
-        controlPanelLayout = enumOrDefault(prefs[Keys.CONTROL_PANEL_LAYOUT], ControlPanelLayout.RIGHT_EDGE_MENU),
-        gamePanelStyle = enumOrDefault(prefs[Keys.GAME_PANEL_STYLE], GamePanelStyle.NEW),
-        notificationMuteMode = prefs[Keys.NOTIF_MUTE_MODE] ?: false,
-        dndMode = prefs[Keys.DND_MODE] ?: false,
-        lockBrightness = prefs[Keys.LOCK_BRIGHTNESS] ?: false,
-        lockedBrightnessValue = prefs[Keys.LOCKED_BRIGHTNESS_VALUE] ?: 0.75f,
-        rotationLock = prefs[Keys.ROTATION_LOCK] ?: false,
-        openingAnimation = prefs[Keys.OPENING_ANIM] ?: true,
-        homeAnimation = prefs[Keys.HOME_ANIM] ?: true,
-        lowRamOverlayMode = prefs[Keys.LOW_RAM_OVERLAY] ?: false,
-        autoDetectGameLaunch = prefs[Keys.AUTO_DETECT_GAME] ?: true,
-        crosshairStyle = enumOrDefault(prefs[Keys.CROSSHAIR_STYLE], CrosshairStyle.NONE),
-        screenColorMode = enumOrDefault(prefs[Keys.SCREEN_COLOR_MODE], ScreenColorMode.DEFAULT),
-        screenZoomEnabled = prefs[Keys.SCREEN_ZOOM] ?: false,
-        zoomScale = prefs[Keys.ZOOM_SCALE] ?: 2.0f,
-        activeInfoHud = prefs[Keys.ACTIVE_INFO_HUD] ?: false,
-        turboXMode = prefs[Keys.TURBO_X_MODE] ?: false,
-        effectSoundEnabled = prefs[Keys.EFFECT_SOUND] ?: true,
-        eqPreset = enumOrDefault(prefs[Keys.EQ_PRESET], EqPreset.FPS_FOOTSTEPS),
-        screenScalingWide = prefs[Keys.SCREEN_SCALING] ?: false,
-        keyMapTriggerVisible = prefs[Keys.KEYMAP_TRIGGER] ?: false,
-        dataPanelVisible = prefs[Keys.DATA_PANEL] ?: false,
-        reducePingEnabled = prefs[Keys.REDUCE_PING] ?: false,
-        backgroundControlEnabled = prefs[Keys.BG_CONTROL] ?: true,
-        addedGamePackages = prefs[Keys.ADDED_GAME_PACKAGES] ?: emptySet(),
-        selectedGamePackage = prefs[Keys.SELECTED_GAME_PACKAGE],
-        totalBoostCount = prefs[Keys.TOTAL_BOOST_COUNT] ?: 0,
-        lastFreedMb = prefs[Keys.LAST_FREED_MB] ?: 0,
-        totalUsageMinutes = prefs[Keys.TOTAL_USAGE_MINUTES] ?: 0,
-        turboTimeExpiresAtMs = prefs[Keys.TURBO_TIME_EXPIRES_AT_MS] ?: 0L,
-        adsWatchedCount = prefs[Keys.ADS_WATCHED_COUNT] ?: 0
-    )
+    suspend fun getRemainingTurboSecondsChecked(): Long {
+        val prefs = context.dataStore.data.first()
+        val token = prefs[Keys.TURBO_TIME_VAULT_TOKEN]
+        if (token.isNullOrBlank()) return 0L
+        val unsealed = securityGuard.unsealTurboCredit(token)
+        lastVaultTamperDetected = unsealed.tampered
+        return unsealed.effectiveRemainingSeconds
+    }
+
+    private fun decode(prefs: Preferences): GameTurboSettings {
+        val vaultToken = prefs[Keys.TURBO_TIME_VAULT_TOKEN]
+        val unsealed = if (!vaultToken.isNullOrBlank()) {
+            securityGuard.unsealTurboCredit(vaultToken).also {
+                lastVaultTamperDetected = it.tampered
+            }
+        } else {
+            lastVaultTamperDetected = false
+            null
+        }
+        val resolvedExpiresAt = unsealed?.expiresAtWallMs ?: 0L
+        val resolvedAdsCount = unsealed?.adsWatchedCount ?: 0
+
+        return GameTurboSettings(
+            autoDndOnEnter = prefs[Keys.AUTO_DND] ?: true,
+            muteNotificationsInGame = prefs[Keys.MUTE_NOTIF] ?: false,
+            preventMemoryLeaks = prefs[Keys.PREVENT_MEMORY_LEAKS] ?: true,
+            disableThreeFingerScreenshot = prefs[Keys.DISABLE_THREE_FINGER] ?: false,
+            cpuUnitFormat = enumOrDefault(prefs[Keys.CPU_UNIT_FORMAT], CpuUnitFormat.MHZ),
+            cpuMode = enumOrDefault(prefs[Keys.CPU_MODE], CpuMode.ACCELERATION),
+            fpsGameTarget = prefs[Keys.FPS_GAME_TARGET] ?: 0,
+            frameRateTarget = prefs[Keys.FRAME_RATE_TARGET] ?: 60,
+            slidingFrictionIndex = prefs[Keys.SLIDING_FRICTION_INDEX] ?: 0,
+            scrollingSensitivity = prefs[Keys.SCROLLING_SENSITIVITY] ?: 0,
+            enhanceTouchSensitivity = prefs[Keys.ENHANCE_TOUCH] ?: false,
+            reduceTouchLatency = prefs[Keys.REDUCE_TOUCH_LATENCY] ?: false,
+            increaseCpuPerformance = prefs[Keys.INCREASE_CPU] ?: false,
+            increaseGpuPerformance = prefs[Keys.INCREASE_GPU] ?: false,
+            forceGpuOpenGl = prefs[Keys.FORCE_OPENGL] ?: false,
+            enableSkiaVulkan = prefs[Keys.ENABLE_VULKAN] ?: false,
+            highPerfFpsControl = prefs[Keys.HIGH_PERF_FPS] ?: false,
+            backgroundLimitIndex = prefs[Keys.BG_LIMIT_INDEX] ?: 0,
+            cacheLimitIndex = prefs[Keys.CACHE_LIMIT_INDEX] ?: 0,
+            wallpaperTheme = enumOrDefault(prefs[Keys.WALLPAPER_THEME], WallpaperTheme.OBSIDIAN_CRIMSON),
+            customWallpaperUri = prefs[Keys.CUSTOM_WALLPAPER_URI],
+            controlPanelLayout = enumOrDefault(prefs[Keys.CONTROL_PANEL_LAYOUT], ControlPanelLayout.RIGHT_EDGE_MENU),
+            gamePanelStyle = enumOrDefault(prefs[Keys.GAME_PANEL_STYLE], GamePanelStyle.NEW),
+            notificationMuteMode = prefs[Keys.NOTIF_MUTE_MODE] ?: false,
+            dndMode = prefs[Keys.DND_MODE] ?: false,
+            lockBrightness = prefs[Keys.LOCK_BRIGHTNESS] ?: false,
+            lockedBrightnessValue = prefs[Keys.LOCKED_BRIGHTNESS_VALUE] ?: 0.75f,
+            rotationLock = prefs[Keys.ROTATION_LOCK] ?: false,
+            openingAnimation = prefs[Keys.OPENING_ANIM] ?: true,
+            homeAnimation = prefs[Keys.HOME_ANIM] ?: true,
+            lowRamOverlayMode = prefs[Keys.LOW_RAM_OVERLAY] ?: false,
+            autoDetectGameLaunch = prefs[Keys.AUTO_DETECT_GAME] ?: true,
+            crosshairStyle = enumOrDefault(prefs[Keys.CROSSHAIR_STYLE], CrosshairStyle.NONE),
+            screenColorMode = enumOrDefault(prefs[Keys.SCREEN_COLOR_MODE], ScreenColorMode.DEFAULT),
+            screenZoomEnabled = prefs[Keys.SCREEN_ZOOM] ?: false,
+            zoomScale = prefs[Keys.ZOOM_SCALE] ?: 2.0f,
+            activeInfoHud = prefs[Keys.ACTIVE_INFO_HUD] ?: false,
+            turboXMode = prefs[Keys.TURBO_X_MODE] ?: false,
+            effectSoundEnabled = prefs[Keys.EFFECT_SOUND] ?: true,
+            eqPreset = enumOrDefault(prefs[Keys.EQ_PRESET], EqPreset.FPS_FOOTSTEPS),
+            screenScalingWide = prefs[Keys.SCREEN_SCALING] ?: false,
+            keyMapTriggerVisible = prefs[Keys.KEYMAP_TRIGGER] ?: false,
+            dataPanelVisible = prefs[Keys.DATA_PANEL] ?: false,
+            reducePingEnabled = prefs[Keys.REDUCE_PING] ?: false,
+            backgroundControlEnabled = prefs[Keys.BG_CONTROL] ?: true,
+            addedGamePackages = prefs[Keys.ADDED_GAME_PACKAGES] ?: emptySet(),
+            selectedGamePackage = prefs[Keys.SELECTED_GAME_PACKAGE],
+            totalBoostCount = prefs[Keys.TOTAL_BOOST_COUNT] ?: 0,
+            lastFreedMb = prefs[Keys.LAST_FREED_MB] ?: 0,
+            totalUsageMinutes = prefs[Keys.TOTAL_USAGE_MINUTES] ?: 0,
+            turboTimeExpiresAtMs = resolvedExpiresAt,
+            adsWatchedCount = resolvedAdsCount
+        )
+    }
 
     private inline fun <reified T : Enum<T>> enumOrDefault(raw: String?, default: T): T {
         if (raw == null) return default

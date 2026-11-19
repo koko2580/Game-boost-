@@ -92,6 +92,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingRoute = intent?.getStringExtra(GameOverlayService.EXTRA_START_ROUTE)
+        window.decorView.filterTouchesWhenObscured = true
         enableEdgeToEdge()
         setContent {
             val viewModel: GameTurboViewModel = viewModel()
@@ -118,6 +119,7 @@ class MainActivity : ComponentActivity() {
             val rewardedAdLoading by viewModel.rewardedAdLoading.collectAsStateWithLifecycle()
             val rewardedAdError by viewModel.rewardedAdError.collectAsStateWithLifecycle()
             val performanceStatus by viewModel.performanceStatus.collectAsStateWithLifecycle()
+            val securityAudit by viewModel.securityAudit.collectAsStateWithLifecycle()
 
             // Real Choreographer FPS measurement + ADPF frame duration reporting
             DisposableEffect(Unit) {
@@ -256,6 +258,7 @@ class MainActivity : ComponentActivity() {
                                 telemetry = telemetry,
                                 performanceStatus = performanceStatus,
                                 permissions = permissions,
+                                securityAudit = securityAudit,
                                 statusMessage = statusMessage,
                                 performanceActions = perfActions,
                                 onUpdateSettings = viewModel::updateSettings,
