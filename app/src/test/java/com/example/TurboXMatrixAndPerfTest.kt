@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.CpuMode
 import com.example.data.GameAudioEnhancer
+import com.example.data.GamePanelStyle
 import com.example.data.GameTurboSettings
 import com.example.data.HardwareTelemetry
 import com.example.data.InstalledAppInfo
@@ -21,7 +22,9 @@ import com.example.data.PermissionStatus
 import com.example.data.SystemHardwareController
 import com.example.security.AppSecurityGuard
 import com.example.security.SecurityAuditReport
+import com.example.ui.components.GamePanelOverlayContent
 import com.example.ui.components.NetworkGateOverlay
+import com.example.ui.components.OverlayCallbacks
 import com.example.ui.screens.LauncherHomeScreen
 import com.example.ui.screens.PerformanceActions
 import com.example.ui.screens.SettingsScreen
@@ -287,4 +290,191 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithText("Optimize performance").assertIsDisplayed()
     }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w900dp-h1200dp")
+    fun `settings overlay style gallery renders and selects ROG Xiaomi and RedMagic styles`() {
+        var latestSettings = GameTurboSettings()
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                SettingsScreen(
+                    settings = latestSettings,
+                    telemetry = HardwareTelemetry(),
+                    performanceStatus = PerformanceEngineStatus(),
+                    permissions = PermissionStatus(),
+                    securityAudit = SecurityAuditReport(),
+                    statusMessage = null,
+                    performanceActions = emptyPerformanceActions(),
+                    onUpdateSettings = { transform -> latestSettings = transform(latestSettings) },
+                    onBoostRam = {},
+                    onClearCache = {},
+                    onSelectWallpaperTheme = { _, _ -> },
+                    onOpenPermissions = {},
+                    onDismissStatus = {},
+                    onBack = {}
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("settings_cat_GAME_PANEL").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("panel_style_ROG_STYLE").assertIsDisplayed().performClick()
+        assertEquals(GamePanelStyle.ROG_STYLE, latestSettings.gamePanelStyle)
+
+        composeTestRule.onNodeWithTag("panel_style_XIAOMI_STYLE").assertIsDisplayed().performClick()
+        assertEquals(GamePanelStyle.XIAOMI_STYLE, latestSettings.gamePanelStyle)
+
+        composeTestRule.onNodeWithTag("panel_style_REDMAGIC_STYLE").assertIsDisplayed().performClick()
+        assertEquals(GamePanelStyle.REDMAGIC_STYLE, latestSettings.gamePanelStyle)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w840dp-h400dp")
+    fun `landscape ROG overlay renders armoury HUD and dispatches boost and minimize callbacks`() {
+        var boosted = false
+        var minimized = false
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                GamePanelOverlayContent(
+                    settings = GameTurboSettings(gamePanelStyle = GamePanelStyle.ROG_STYLE),
+                    telemetry = HardwareTelemetry(actualFps = 120, cpuFreqMHz = 2800, ramUsedPercent = 44),
+                    brightnessFraction = 0.7f,
+                    volumeFraction = 0.6f,
+                    autoBrightness = false,
+                    autoRotate = true,
+                    stopwatchSeconds = 0L,
+                    isStopwatchRunning = false,
+                    statusMessage = null,
+                    callbacks = testOverlayCallbacks(
+                        onBoostRam = { boosted = true },
+                        onMinimizeClick = { minimized = true }
+                    )
+                )
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("overlay_rog_root").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("overlay_ram_boost_pill").performClick()
+        composeTestRule.onNodeWithTag("overlay_g_handle").performClick()
+        assertTrue(boosted)
+        assertTrue(minimized)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w360dp-h800dp")
+    fun `portrait Xiaomi Hyper overlay renders smoothly and cycles CPU mode`() {
+        var selectedMode: CpuMode? = null
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                GamePanelOverlayContent(
+                    settings = GameTurboSettings(
+                        gamePanelStyle = GamePanelStyle.XIAOMI_STYLE,
+                        cpuMode = CpuMode.BALANCED
+                    ),
+                    telemetry = HardwareTelemetry(actualFps = 90, cpuFreqMHz = 2200, ramUsedPercent = 51),
+                    brightnessFraction = 0.6f,
+                    volumeFraction = 0.8f,
+                    autoBrightness = false,
+                    autoRotate = false,
+                    stopwatchSeconds = 0L,
+                    isStopwatchRunning = false,
+                    statusMessage = null,
+                    callbacks = testOverlayCallbacks(
+                        onSelectCpuMode = { selectedMode = it }
+                    )
+                )
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("overlay_xiaomi_root").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("overlay_cpu_mode_pill").performClick()
+        assertEquals(CpuMode.ACCELERATION, selectedMode)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w840dp-h400dp")
+    fun `landscape RedMagic Cyber overlay renders cooling turbine HUD and handles interactions`() {
+        var boosted = false
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                GamePanelOverlayContent(
+                    settings = GameTurboSettings(
+                        gamePanelStyle = GamePanelStyle.REDMAGIC_STYLE,
+                        cpuMode = CpuMode.ACCELERATION
+                    ),
+                    telemetry = HardwareTelemetry(actualFps = 144, cpuFreqMHz = 3100, ramUsedPercent = 39),
+                    brightnessFraction = 0.8f,
+                    volumeFraction = 0.7f,
+                    autoBrightness = true,
+                    autoRotate = true,
+                    stopwatchSeconds = 12L,
+                    isStopwatchRunning = true,
+                    statusMessage = "DIABLO TURBO ENGAGED",
+                    callbacks = testOverlayCallbacks(onBoostRam = { boosted = true })
+                )
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("overlay_redmagic_root").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("overlay_ram_boost_pill").performClick()
+        assertTrue(boosted)
+    }
+
+    private fun emptyPerformanceActions() = PerformanceActions(
+        onSetFpsGameTarget = {},
+        onSetFrameRateTarget = {},
+        onSetSlidingFrictionIndex = {},
+        onSetScrollingSensitivity = {},
+        onSetEnhanceTouchSensitivity = {},
+        onSetReduceTouchLatency = {},
+        onSetIncreaseCpuPerformance = {},
+        onSetIncreaseGpuPerformance = {},
+        onSetForceGpuOpenGl = {},
+        onSetEnableSkiaVulkan = {},
+        onSetHighPerfFpsControl = {},
+        onOpenPermissions = {},
+        onOpenDeveloperOptions = {}
+    )
+
+    private fun testOverlayCallbacks(
+        onSelectCpuMode: (CpuMode) -> Unit = {},
+        onBoostRam: () -> Unit = {},
+        onMinimizeClick: () -> Unit = {}
+    ) = OverlayCallbacks(
+        onHomeClick = {},
+        onSettingsClick = {},
+        onGamesClick = {},
+        onPowerExitClick = {},
+        onMinimizeClick = onMinimizeClick,
+        onSelectCpuMode = onSelectCpuMode,
+        onCycleFrameRate = {},
+        onBoostRam = onBoostRam,
+        onClearCache = {},
+        onPingTest = {},
+        onToggleStopwatch = {},
+        onResetStopwatch = {},
+        onToggleActiveInfo = {},
+        onToggleTurboX = {},
+        onToggleDataPanel = {},
+        onCycleCrosshair = {},
+        onCycleScreenColor = {},
+        onToggleScreenZoom = {},
+        onToggleBackgroundControl = {},
+        onToggleEffectSound = {},
+        onToggleScreenScaling = {},
+        onToggleKeyMap = {},
+        onBrightnessChange = {},
+        onVolumeChange = {},
+        onToggleAutoRotate = {},
+        onToggleAutoBrightness = {},
+        onToggleNoNotifications = {},
+        onToggleDnd = {},
+        onOpenWifi = {},
+        onScreenshotInfo = {},
+        onQuickApp = { _, _ -> }
+    )
 }

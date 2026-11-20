@@ -12,6 +12,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -400,11 +402,17 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Interactive In-App Dual-Wing Game Panel Overlay
+                    // Interactive In-App Dual-Wing / Esports Game Panel Overlay
                     AnimatedVisibility(
                         visible = isOverlayOpen,
-                        enter = fadeIn(),
-                        exit = fadeOut()
+                        enter = fadeIn(tween(220)) + scaleIn(
+                            initialScale = 0.94f,
+                            animationSpec = spring(dampingRatio = 0.80f, stiffness = Spring.StiffnessMediumLow)
+                        ),
+                        exit = fadeOut(tween(180)) + scaleOut(
+                            targetScale = 0.96f,
+                            animationSpec = tween(180)
+                        )
                     ) {
                         BackHandler(enabled = isOverlayOpen) {
                             viewModel.closeInAppOverlay()

@@ -1,6 +1,9 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
@@ -76,6 +79,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -151,23 +155,6 @@ data class OverlayCallbacks(
     val onOpenWifi: () -> Unit,
     val onScreenshotInfo: () -> Unit,
     val onQuickApp: (List<String>, String) -> Unit
-)
-
-private data class WingToolItem(
-    val id: String,
-    val label: String,
-    val icon: ImageVector,
-    val isActive: Boolean,
-    val onClick: () -> Unit
-)
-
-private data class RightTileItem(
-    val id: String,
-    val label: String,
-    val icon: ImageVector?,
-    val customBadgeText: String? = null,
-    val isActive: Boolean,
-    val onClick: () -> Unit
 )
 
 @Composable
@@ -279,6 +266,22 @@ fun GamePanelOverlayContent(
             .background(screenTintColor)
     ) {
         val isWideLandscape = maxWidth >= 620.dp
+        val entranceProgress = remember(settings.gamePanelStyle) {
+            Animatable(if (settings.lowRamOverlayMode) 1f else 0f)
+        }
+        LaunchedEffect(settings.gamePanelStyle, settings.lowRamOverlayMode) {
+            if (settings.lowRamOverlayMode) {
+                entranceProgress.snapTo(1f)
+            } else {
+                entranceProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = spring(
+                        dampingRatio = 0.80f,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                )
+            }
+        }
 
         CrosshairOverlay(style = settings.crosshairStyle)
 
@@ -348,8 +351,68 @@ fun GamePanelOverlayContent(
             }
         }
 
-        if (isWideLandscape) {
-            Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val t = entranceProgress.value.coerceIn(0f, 1f)
+                    val s = 0.94f + (0.06f * t)
+                    scaleX = s
+                    scaleY = s
+                    alpha = 0.45f + (0.55f * t)
+                }
+        ) {
+            when (settings.gamePanelStyle) {
+                GamePanelStyle.ROG_STYLE -> {
+                    RogArmouryOverlayContent(
+                        isWideLandscape = isWideLandscape,
+                        settings = settings,
+                        telemetry = telemetry,
+                        cpuDisplayValue = cpuDisplayValue,
+                        cpuDisplayUnit = cpuDisplayUnit,
+                        brightnessFraction = brightnessFraction,
+                        volumeFraction = volumeFraction,
+                        stopwatchSeconds = stopwatchSeconds,
+                        isStopwatchRunning = isStopwatchRunning,
+                        statusMessage = statusMessage,
+                        leftTools = leftTools,
+                        rightTiles = rightTiles,
+                        callbacks = callbacks
+                    )
+                }
+                GamePanelStyle.XIAOMI_STYLE -> {
+                    XiaomiHyperOverlayContent(
+                        isWideLandscape = isWideLandscape,
+                        settings = settings,
+                        telemetry = telemetry,
+                        cpuDisplayValue = cpuDisplayValue,
+                        cpuDisplayUnit = cpuDisplayUnit,
+                        brightnessFraction = brightnessFraction,
+                        volumeFraction = volumeFraction,
+                        statusMessage = statusMessage,
+                        leftTools = leftTools,
+                        rightTiles = rightTiles,
+                        callbacks = callbacks
+                    )
+                }
+                GamePanelStyle.REDMAGIC_STYLE -> {
+                    RedMagicCyberOverlayContent(
+                        isWideLandscape = isWideLandscape,
+                        settings = settings,
+                        telemetry = telemetry,
+                        cpuDisplayValue = cpuDisplayValue,
+                        cpuDisplayUnit = cpuDisplayUnit,
+                        brightnessFraction = brightnessFraction,
+                        volumeFraction = volumeFraction,
+                        statusMessage = statusMessage,
+                        leftTools = leftTools,
+                        rightTiles = rightTiles,
+                        callbacks = callbacks
+                    )
+                }
+                GamePanelStyle.CLASSIC, GamePanelStyle.NEW -> {
+                    if (isWideLandscape) {
+                        Box(modifier = Modifier.fillMaxSize()) {
                 if (!isClassic) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val w = size.width
@@ -842,7 +905,13 @@ fun GamePanelOverlayContent(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                HolographicGaugeRing(cpuDisplayValue, cpuDisplayUnit, "CPU", cpuRingColor)
+                                HolographicGaugeRing(
+                                    valueText = cpuDisplayValue,
+                                    unitText = cpuDisplayUnit,
+                                    bottomLabel = "CPU",
+                                    ringColor = cpuRingColor,
+                                    animate = !settings.lowRamOverlayMode
+                                )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Box(
                                     modifier = Modifier
@@ -867,7 +936,13 @@ fun GamePanelOverlayContent(
                                 )
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                HolographicGaugeRing("${telemetry.ramUsedPercent}%", "", "RAM", panelAccent)
+                                HolographicGaugeRing(
+                                    valueText = "${telemetry.ramUsedPercent}%",
+                                    unitText = "",
+                                    bottomLabel = "RAM",
+                                    ringColor = panelAccent,
+                                    animate = !settings.lowRamOverlayMode
+                                )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Box(
                                     modifier = Modifier
@@ -914,6 +989,9 @@ fun GamePanelOverlayContent(
                             }
                         }
                     }
+                }
+            }
+        }
                 }
             }
         }

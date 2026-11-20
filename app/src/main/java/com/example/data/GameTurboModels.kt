@@ -27,9 +27,12 @@ enum class ControlPanelLayout(val title: String, val subtitle: String) {
     TOP_G_HANDLE("Top 'G' Handle", "Floating top 'G' tab — tap or swipe down to open Game Mode")
 }
 
-enum class GamePanelStyle(val label: String) {
-    CLASSIC("Classic"),
-    NEW("New")
+enum class GamePanelStyle(val label: String, val tagline: String) {
+    CLASSIC("Classic", "Balanced dual-wing HUD"),
+    NEW("Angled Cyber", "Sloped cyber glass wings"),
+    ROG_STYLE("ROG Armoury", "Mecha crimson diagonal HUD"),
+    XIAOMI_STYLE("Xiaomi Hyper", "Vibrant HyperOS floating deck"),
+    REDMAGIC_STYLE("RedMagic Cyber", "Neon dual-rail cooling HUD")
 }
 
 enum class WallpaperTheme(val label: String) {

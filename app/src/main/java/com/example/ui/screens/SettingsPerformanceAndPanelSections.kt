@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
@@ -34,6 +40,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,13 +49,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.ControlPanelLayout
@@ -612,81 +625,220 @@ fun GamePanelStyleSection(
     onSelectStyle: (GamePanelStyle) -> Unit
 ) {
     val accent = LocalTurboAccent.current.accent
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        GamePanelStyle.entries.forEach { style ->
-            val selected = style == selectedStyle
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag("panel_style_${style.name}")
-                    .clickable { onSelectStyle(style) },
-                horizontalAlignment = Alignment.CenterHorizontally
+    val rows = remember { GamePanelStyle.entries.chunked(2) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text(
+            text = "Choose your in-game control panel aesthetic. Switch instantly between Cyber HUD and pro esports overlays:",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary
+        )
+        rows.forEach { pair ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(160.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF090B12))
-                        .border(
-                            width = 2.dp,
-                            color = if (selected) accent else Color.White.copy(alpha = 0.7f),
-                            shape = RoundedCornerShape(10.dp)
-                        )
-                        .padding(8.dp)
-                ) {
-                    // Mini wireframe preview of Classic vs New angled wing HUD
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val w = size.width
-                        val h = size.height
-                        val wingColor = CyberAmber.copy(alpha = 0.85f)
-                        if (style == GamePanelStyle.CLASSIC) {
-                            drawRect(Color(0xFF1A1E2B), topLeft = Offset.Zero, size = androidx.compose.ui.geometry.Size(w * 0.32f, h))
-                            drawRect(Color(0xFF1A1E2B), topLeft = Offset(w * 0.68f, 0f), size = androidx.compose.ui.geometry.Size(w * 0.32f, h))
-                            drawCircle(wingColor, radius = 14.dp.toPx(), center = Offset(w * 0.22f, h * 0.42f), style = Stroke(2.dp.toPx()))
-                            drawCircle(wingColor, radius = 14.dp.toPx(), center = Offset(w * 0.78f, h * 0.42f), style = Stroke(2.dp.toPx()))
-                        } else {
-                            val leftWing = Path().apply {
-                                moveTo(0f, 0f)
-                                lineTo(w * 0.30f, 0f)
-                                lineTo(w * 0.40f, h * 0.45f)
-                                lineTo(w * 0.25f, h)
-                                lineTo(0f, h)
-                                close()
-                            }
-                            val rightWing = Path().apply {
-                                moveTo(w, 0f)
-                                lineTo(w * 0.70f, 0f)
-                                lineTo(w * 0.60f, h * 0.45f)
-                                lineTo(w * 0.75f, h)
-                                lineTo(w, h)
-                                close()
-                            }
-                            drawPath(leftWing, Color(0xFF1A1E2B))
-                            drawPath(rightWing, Color(0xFF1A1E2B))
-                            drawPath(leftWing, wingColor, style = Stroke(2.dp.toPx()))
-                            drawPath(rightWing, wingColor, style = Stroke(2.dp.toPx()))
-                            drawCircle(wingColor, radius = 12.dp.toPx(), center = Offset(w * 0.24f, h * 0.42f), style = Stroke(2.dp.toPx()))
-                            drawCircle(wingColor, radius = 12.dp.toPx(), center = Offset(w * 0.76f, h * 0.42f), style = Stroke(2.dp.toPx()))
-                        }
-                    }
-                    Text(
-                        text = if (style == GamePanelStyle.CLASSIC) "0.88 GHz  •  43%" else "Angled HUD",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = RajdhaniFontFamily),
-                        color = CyberAmber,
-                        modifier = Modifier.align(Alignment.BottomCenter)
+                pair.forEach { style ->
+                    GamePanelStyleCard(
+                        style = style,
+                        selected = style == selectedStyle,
+                        fallbackAccent = accent,
+                        onClick = { onSelectStyle(style) },
+                        modifier = Modifier.weight(1f)
                     )
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = style.label,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (selected) accent else TextPrimary
-                )
+                if (pair.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun GamePanelStyleCard(
+    style: GamePanelStyle,
+    selected: Boolean,
+    fallbackAccent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val styleAccent = when (style) {
+        GamePanelStyle.CLASSIC -> CyberAmber
+        GamePanelStyle.NEW -> fallbackAccent
+        GamePanelStyle.ROG_STYLE -> Color(0xFFFF1744)
+        GamePanelStyle.XIAOMI_STYLE -> Color(0xFF00A8FF)
+        GamePanelStyle.REDMAGIC_STYLE -> Color(0xFF00F0FF)
+    }
+    val cardScale by animateFloatAsState(
+        targetValue = if (selected) 1.02f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMedium),
+        label = "style_card_scale_${style.name}"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) styleAccent else CyberBorder,
+        animationSpec = tween(220),
+        label = "style_card_border_${style.name}"
+    )
+    val cardShape = when (style) {
+        GamePanelStyle.ROG_STYLE -> CutCornerShape(topStart = 14.dp, bottomEnd = 14.dp, topEnd = 6.dp, bottomStart = 6.dp)
+        GamePanelStyle.REDMAGIC_STYLE -> CutCornerShape(12.dp)
+        GamePanelStyle.XIAOMI_STYLE -> RoundedCornerShape(18.dp)
+        else -> RoundedCornerShape(12.dp)
+    }
+
+    Column(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+            }
+            .testTag("panel_style_${style.name}")
+            .minimumInteractiveComponentSize()
+            .clip(cardShape)
+            .background(if (selected) styleAccent.copy(alpha = 0.08f) else Color(0xFF0C101B))
+            .border(
+                width = if (selected) 2.dp else 1.2.dp,
+                color = borderColor,
+                shape = cardShape
+            )
+            .clickable { onClick() }
+            .padding(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(118.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF070910))
+                .padding(6.dp)
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                when (style) {
+                    GamePanelStyle.CLASSIC -> {
+                        drawRect(Color(0xFF1A1E2B), topLeft = Offset.Zero, size = Size(w * 0.34f, h))
+                        drawRect(Color(0xFF1A1E2B), topLeft = Offset(w * 0.66f, 0f), size = Size(w * 0.34f, h))
+                        drawCircle(CyberAmber, radius = 11.dp.toPx(), center = Offset(w * 0.22f, h * 0.45f), style = Stroke(2.dp.toPx()))
+                        drawCircle(CyberAmber, radius = 11.dp.toPx(), center = Offset(w * 0.78f, h * 0.45f), style = Stroke(2.dp.toPx()))
+                    }
+                    GamePanelStyle.NEW -> {
+                        val leftWing = Path().apply {
+                            moveTo(0f, 0f); lineTo(w * 0.30f, 0f); lineTo(w * 0.40f, h * 0.45f); lineTo(w * 0.24f, h); lineTo(0f, h); close()
+                        }
+                        val rightWing = Path().apply {
+                            moveTo(w, 0f); lineTo(w * 0.70f, 0f); lineTo(w * 0.60f, h * 0.45f); lineTo(w * 0.76f, h); lineTo(w, h); close()
+                        }
+                        drawPath(leftWing, Color(0xFF1A1E2B))
+                        drawPath(rightWing, Color(0xFF1A1E2B))
+                        drawPath(leftWing, fallbackAccent, style = Stroke(1.8.dp.toPx()))
+                        drawPath(rightWing, fallbackAccent, style = Stroke(1.8.dp.toPx()))
+                        drawCircle(fallbackAccent, radius = 10.dp.toPx(), center = Offset(w * 0.22f, h * 0.44f), style = Stroke(1.8.dp.toPx()))
+                        drawCircle(fallbackAccent, radius = 10.dp.toPx(), center = Offset(w * 0.78f, h * 0.44f), style = Stroke(1.8.dp.toPx()))
+                    }
+                    GamePanelStyle.ROG_STYLE -> {
+                        val rogOutline = Path().apply {
+                            moveTo(w * 0.14f, 0f); lineTo(w * 0.96f, 0f); lineTo(w * 0.96f, h * 0.80f)
+                            lineTo(w * 0.84f, h); lineTo(w * 0.04f, h); lineTo(w * 0.04f, h * 0.20f); close()
+                        }
+                        drawPath(rogOutline, Color(0xFF131520))
+                        drawPath(rogOutline, Color(0xFFFF1744), style = Stroke(2.dp.toPx()))
+                        drawLine(
+                            brush = Brush.horizontalGradient(listOf(Color.Transparent, Color(0xFFFF1744), Color.Transparent)),
+                            start = Offset(w * 0.1f, h * 0.26f),
+                            end = Offset(w * 0.9f, h * 0.26f),
+                            strokeWidth = 2.5.dp.toPx()
+                        )
+                        // Triple X-MODE segmented strip
+                        drawRoundRect(Color(0xFF232838), Offset(w * 0.14f, h * 0.38f), Size(w * 0.22f, h * 0.16f), CornerRadius(3.dp.toPx()))
+                        drawRoundRect(Color(0xFF232838), Offset(w * 0.39f, h * 0.38f), Size(w * 0.22f, h * 0.16f), CornerRadius(3.dp.toPx()))
+                        drawRoundRect(Color(0xFFFF1744), Offset(w * 0.64f, h * 0.38f), Size(w * 0.22f, h * 0.16f), CornerRadius(3.dp.toPx()))
+                        drawRoundRect(Color(0xFF1E2232), Offset(w * 0.14f, h * 0.64f), Size(w * 0.72f, h * 0.22f), CornerRadius(4.dp.toPx()))
+                    }
+                    GamePanelStyle.XIAOMI_STYLE -> {
+                        drawRoundRect(
+                            color = Color(0xFF111D32),
+                            topLeft = Offset(w * 0.06f, 0f),
+                            size = Size(w * 0.88f, h),
+                            cornerRadius = CornerRadius(14.dp.toPx())
+                        )
+                        drawRoundRect(
+                            brush = Brush.horizontalGradient(listOf(Color(0xFF00A8FF), Color(0xFF00E5C3))),
+                            topLeft = Offset(w * 0.12f, h * 0.12f),
+                            size = Size(w * 0.76f, h * 0.22f),
+                            cornerRadius = CornerRadius(10.dp.toPx())
+                        )
+                        for (c in 0 until 3) {
+                            drawRoundRect(
+                                color = Color(0xFF1A2B48),
+                                topLeft = Offset(w * (0.12f + c * 0.27f), h * 0.44f),
+                                size = Size(w * 0.22f, h * 0.20f),
+                                cornerRadius = CornerRadius(6.dp.toPx())
+                            )
+                            drawRoundRect(
+                                color = if (c == 0) Color(0xFF00A8FF) else Color(0xFF1A2B48),
+                                topLeft = Offset(w * (0.12f + c * 0.27f), h * 0.70f),
+                                size = Size(w * 0.22f, h * 0.20f),
+                                cornerRadius = CornerRadius(6.dp.toPx())
+                            )
+                        }
+                    }
+                    GamePanelStyle.REDMAGIC_STYLE -> {
+                        drawRoundRect(
+                            color = Color(0xFF0C101B),
+                            topLeft = Offset(w * 0.05f, 0f),
+                            size = Size(w * 0.90f, h),
+                            cornerRadius = CornerRadius(6.dp.toPx())
+                        )
+                        drawLine(Color(0xFFFF1E42), Offset(w * 0.05f, 0f), Offset(w * 0.05f, h), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                        drawLine(Color(0xFF00F0FF), Offset(w * 0.95f, 0f), Offset(w * 0.95f, h), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                        // Mini turbine circle
+                        val c = Offset(w * 0.50f, h * 0.36f)
+                        val r = 13.dp.toPx()
+                        drawCircle(Color(0xFF00F0FF), radius = r, center = c, style = Stroke(1.8.dp.toPx()))
+                        drawCircle(Color(0xFFFF1E42), radius = 4.dp.toPx(), center = c)
+                        drawRoundRect(Color(0xFF191D2E), Offset(w * 0.14f, h * 0.66f), Size(w * 0.33f, h * 0.20f), CornerRadius(3.dp.toPx()))
+                        drawRoundRect(Color(0xFF0E222E), Offset(w * 0.53f, h * 0.66f), Size(w * 0.33f, h * 0.20f), CornerRadius(3.dp.toPx()))
+                    }
+                }
+            }
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .clip(CircleShape)
+                        .background(styleAccent)
+                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "ACTIVE",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = if (style == GamePanelStyle.REDMAGIC_STYLE || style == GamePanelStyle.XIAOMI_STYLE) Color(0xFF04101A) else Color.White
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = style.label,
+            style = MaterialTheme.typography.titleMedium.copy(fontFamily = RajdhaniFontFamily, fontWeight = FontWeight.Bold),
+            color = if (selected) styleAccent else TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = style.tagline,
+            style = MaterialTheme.typography.labelSmall,
+            color = TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
     }
 }
