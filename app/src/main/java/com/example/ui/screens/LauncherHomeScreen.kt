@@ -343,7 +343,7 @@ fun LauncherHomeScreen(
                             onClick = onOpenOverlayPreview,
                             testTag = "open_overlay_preview_btn"
                         )
-                        val allPermsOk = permissions.dndGranted && permissions.overlayGranted && permissions.writeSettingsGranted
+                        val allPermsOk = permissions.allGranted
                         HeaderCircleButton(
                             icon = Icons.Rounded.Security,
                             description = "Permissions",

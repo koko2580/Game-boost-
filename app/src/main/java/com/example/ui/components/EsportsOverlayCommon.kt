@@ -15,13 +15,19 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -40,8 +46,6 @@ import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
@@ -51,15 +55,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -153,7 +159,8 @@ internal fun EsportsToolCard(
     inactiveContainer: Color,
     shape: Shape,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    cardHeight: Dp = 50.dp
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -176,12 +183,12 @@ internal fun EsportsToolCard(
     Column(
         modifier = modifier
             .scale(scale)
-            .height(58.dp)
+            .height(cardHeight)
             .clip(shape)
             .background(bg)
             .border(if (active) 1.3.dp else 1.dp, border, shape)
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
-            .padding(horizontal = 6.dp, vertical = 6.dp),
+            .padding(horizontal = 5.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -274,30 +281,136 @@ internal fun EsportsHorizontalSliderRow(
     accentColor: Color,
     onValueChange: (Float) -> Unit
 ) {
+    val clamped = value.coerceIn(0.05f, 1f)
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(30.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Icon(icon, contentDescription = label, tint = accentColor, modifier = Modifier.size(18.dp))
-        Slider(
-            value = value.coerceIn(0.05f, 1f),
-            onValueChange = onValueChange,
-            valueRange = 0.05f..1f,
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = accentColor,
-                inactiveTrackColor = CyberSlate
-            ),
-            modifier = Modifier.weight(1f)
-        )
+        Icon(icon, contentDescription = label, tint = accentColor, modifier = Modifier.size(16.dp))
+        BoxWithConstraints(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        val frac = (offset.x / size.width.toFloat()).coerceIn(0.05f, 1f)
+                        onValueChange(frac)
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures { change, _ ->
+                        change.consume()
+                        val frac = (change.position.x / size.width.toFloat()).coerceIn(0.05f, 1f)
+                        onValueChange(frac)
+                    }
+                },
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val trackH = 8.dp.toPx()
+                val topY = (size.height - trackH) / 2f
+                val corner = CornerRadius(trackH / 2f)
+                drawRoundRect(
+                    color = CyberSlate,
+                    topLeft = Offset(0f, topY),
+                    size = Size(size.width, trackH),
+                    cornerRadius = corner
+                )
+                val fillW = (size.width * clamped).coerceAtLeast(trackH)
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(listOf(accentColor.copy(alpha = 0.78f), accentColor)),
+                    topLeft = Offset(0f, topY),
+                    size = Size(fillW, trackH),
+                    cornerRadius = corner
+                )
+                val thumbX = fillW.coerceIn(7.dp.toPx(), (size.width - 7.dp.toPx()).coerceAtLeast(7.dp.toPx()))
+                drawCircle(
+                    color = Color.White,
+                    radius = 6.5.dp.toPx(),
+                    center = Offset(thumbX, size.height / 2f)
+                )
+                drawCircle(
+                    color = accentColor,
+                    radius = 3.dp.toPx(),
+                    center = Offset(thumbX, size.height / 2f)
+                )
+            }
+        }
         Text(
-            text = "${(value * 100).toInt()}%",
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = RajdhaniFontFamily),
+            text = "${(clamped * 100).toInt()}%",
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = RajdhaniFontFamily, fontWeight = FontWeight.Bold),
             color = TextSecondary,
             modifier = Modifier.width(34.dp),
             textAlign = TextAlign.End
         )
+    }
+}
+
+@Composable
+internal fun EsportsVerticalNeonSlider(
+    icon: ImageVector,
+    label: String,
+    value: Float,
+    accentColor: Color,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val clamped = value.coerceIn(0.05f, 1f)
+    Column(
+        modifier = modifier.fillMaxHeight(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = "${(clamped * 100).toInt()}%",
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = RajdhaniFontFamily, fontWeight = FontWeight.Bold, fontSize = 10.sp),
+            color = accentColor,
+            maxLines = 1
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .width(38.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF101522))
+                .border(1.dp, accentColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        val frac = (1f - (offset.y / size.height.toFloat())).coerceIn(0.05f, 1f)
+                        onValueChange(frac)
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures { change, _ ->
+                        change.consume()
+                        val frac = (1f - (change.position.y / size.height.toFloat())).coerceIn(0.05f, 1f)
+                        onValueChange(frac)
+                    }
+                },
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize().padding(4.dp)) {
+                val segments = 8
+                val gap = 3.dp.toPx()
+                val segH = (size.height - gap * (segments - 1)) / segments
+                val litCount = (clamped * segments).toInt().coerceIn(1, segments)
+                for (i in 0 until segments) {
+                    val idxFromBottom = segments - 1 - i
+                    val top = i * (segH + gap)
+                    val isLit = idxFromBottom < litCount
+                    drawRoundRect(
+                        color = if (isLit) accentColor else Color(0xFF1D2436),
+                        topLeft = Offset(0f, top),
+                        size = Size(size.width, segH),
+                        cornerRadius = CornerRadius(2.5.dp.toPx())
+                    )
+                }
+            }
+        }
+        Icon(icon, contentDescription = label, tint = accentColor, modifier = Modifier.size(16.dp))
     }
 }
 
@@ -367,25 +480,33 @@ internal fun SpinningCoolingFanGlyph(
         CpuMode.BALANCED -> 1600
         CpuMode.ACCELERATION -> 850
     }
-    val infiniteTransition = rememberInfiniteTransition(label = "redmagic_fan_spin")
-    val angle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = cycleMs, easing = LinearEasing)
-        ),
-        label = "fan_angle"
-    )
-    val pulse by infiniteTransition.animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "fan_glow_pulse"
-    )
-    val effectiveAngle = if (animate) angle else 18f
+    val angle: Float
+    val pulse: Float
+    if (animate) {
+        val infiniteTransition = rememberInfiniteTransition(label = "redmagic_fan_spin")
+        val animatedAngle by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = cycleMs, easing = LinearEasing)
+            ),
+            label = "fan_angle"
+        )
+        val animatedPulse by infiniteTransition.animateFloat(
+            initialValue = 0.55f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "fan_glow_pulse"
+        )
+        angle = animatedAngle
+        pulse = animatedPulse
+    } else {
+        angle = 18f
+        pulse = 0.75f
+    }
 
     Canvas(modifier = Modifier.size(sizeDp)) {
         val cx = size.width / 2f
@@ -406,7 +527,7 @@ internal fun SpinningCoolingFanGlyph(
             center = Offset(cx, cy),
             style = Stroke(width = 1.6.dp.toPx())
         )
-        rotate(degrees = effectiveAngle, pivot = Offset(cx, cy)) {
+        rotate(degrees = angle, pivot = Offset(cx, cy)) {
             val bladeCount = 6
             for (i in 0 until bladeCount) {
                 val deg = i * (360f / bladeCount)

@@ -86,6 +86,7 @@ class GameTurboPreferencesRepository(private val context: Context) {
         val TURBO_TIME_EXPIRES_AT_MS = longPreferencesKey("turbo_time_expires_at_ms")
         val ADS_WATCHED_COUNT = intPreferencesKey("ads_watched_count")
         val TURBO_TIME_VAULT_TOKEN = stringPreferencesKey("turbo_time_vault_v1")
+        val HAS_COMPLETED_PERMISSION_SETUP = booleanPreferencesKey("has_completed_permission_setup")
     }
 
     val settingsFlow: Flow<GameTurboSettings> = context.dataStore.data.map { prefs ->
@@ -164,6 +165,7 @@ class GameTurboPreferencesRepository(private val context: Context) {
             }
             prefs.remove(Keys.TURBO_TIME_EXPIRES_AT_MS)
             prefs.remove(Keys.ADS_WATCHED_COUNT)
+            prefs[Keys.HAS_COMPLETED_PERMISSION_SETUP] = updated.hasCompletedPermissionSetup
         }
     }
 
@@ -241,7 +243,8 @@ class GameTurboPreferencesRepository(private val context: Context) {
             lastFreedMb = prefs[Keys.LAST_FREED_MB] ?: 0,
             totalUsageMinutes = prefs[Keys.TOTAL_USAGE_MINUTES] ?: 0,
             turboTimeExpiresAtMs = resolvedExpiresAt,
-            adsWatchedCount = resolvedAdsCount
+            adsWatchedCount = resolvedAdsCount,
+            hasCompletedPermissionSetup = prefs[Keys.HAS_COMPLETED_PERMISSION_SETUP] ?: false
         )
     }
 

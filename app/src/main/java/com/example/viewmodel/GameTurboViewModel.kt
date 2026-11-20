@@ -144,6 +144,9 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     private val _showSplash = MutableStateFlow(true)
     val showSplash: StateFlow<Boolean> = _showSplash.asStateFlow()
 
+    private val _prefsLoaded = MutableStateFlow(false)
+    val prefsLoaded: StateFlow<Boolean> = _prefsLoaded.asStateFlow()
+
     private val networkMonitor = NetworkGateMonitor(application)
     val isNetworkConnected: StateFlow<Boolean> = networkMonitor.isConnected
 
@@ -159,6 +162,10 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isUiActive = MutableStateFlow(true)
 
     init {
+        viewModelScope.launch {
+            repo.settingsFlow.first()
+            _prefsLoaded.value = true
+        }
         refreshInstalledApps()
         startTelemetryLoop()
         startStopwatchLoop()
@@ -237,6 +244,12 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         _autoBrightness.value = hardware.isAutoBrightnessEnabled()
         _autoRotate.value = hardware.isAutoRotateEnabled()
         _isOverlayServiceRunning.value = GameOverlayService.isRunning
+    }
+
+    fun completePermissionSetup() {
+        viewModelScope.launch {
+            repo.updateSettings { it.copy(hasCompletedPermissionSetup = true) }
+        }
     }
 
     fun refreshInstalledApps() {

@@ -137,6 +137,7 @@ class MainActivity : ComponentActivity() {
             val performanceStatus by viewModel.performanceStatus.collectAsStateWithLifecycle()
             val securityAudit by viewModel.securityAudit.collectAsStateWithLifecycle()
             val showSplash by viewModel.showSplash.collectAsStateWithLifecycle()
+            val prefsLoaded by viewModel.prefsLoaded.collectAsStateWithLifecycle()
             val isNetworkConnected by viewModel.isNetworkConnected.collectAsStateWithLifecycle()
 
             val lifecycleOwner = LocalLifecycleOwner.current
@@ -350,6 +351,11 @@ class MainActivity : ComponentActivity() {
                                     viewModel.suppressAppOpenForExternalFlow()
                                     viewModel.hardware.openWriteSettingsPermission()
                                 },
+                                onRequestUsageStats = {
+                                    viewModel.suppressAppOpenForExternalFlow()
+                                    viewModel.hardware.openUsageAccessSettings()
+                                },
+                                onSuppressAppOpen = viewModel::suppressAppOpenForExternalFlow,
                                 onBack = { navController.popBackStack() }
                             )
                         }
@@ -512,6 +518,41 @@ class MainActivity : ComponentActivity() {
                         onRetryLoad = viewModel::retryLoadRewardedAd,
                         onDismiss = viewModel::dismissAdDialog
                     )
+
+                    // First-Launch Required Permissions Onboarding Screen
+                    AnimatedVisibility(
+                        visible = prefsLoaded && !settings.hasCompletedPermissionSetup && pendingRoute == null,
+                        enter = fadeIn(tween(220)),
+                        exit = fadeOut(tween(260)) + scaleOut(targetScale = 1.03f, animationSpec = tween(240))
+                    ) {
+                        BackHandler(enabled = true) {
+                            viewModel.completePermissionSetup()
+                        }
+                        PermissionsScreen(
+                            permissions = permissions,
+                            onRefreshPermissions = viewModel::refreshPermissionsAndHardware,
+                            onRequestDnd = {
+                                viewModel.suppressAppOpenForExternalFlow()
+                                viewModel.hardware.openDndPermissionSettings()
+                            },
+                            onRequestOverlay = {
+                                viewModel.suppressAppOpenForExternalFlow()
+                                viewModel.hardware.openOverlayPermissionSettings()
+                            },
+                            onRequestWriteSettings = {
+                                viewModel.suppressAppOpenForExternalFlow()
+                                viewModel.hardware.openWriteSettingsPermission()
+                            },
+                            onRequestUsageStats = {
+                                viewModel.suppressAppOpenForExternalFlow()
+                                viewModel.hardware.openUsageAccessSettings()
+                            },
+                            onSuppressAppOpen = viewModel::suppressAppOpenForExternalFlow,
+                            onBack = viewModel::completePermissionSetup,
+                            isOnboardingMode = true,
+                            onCompleteOnboarding = viewModel::completePermissionSetup
+                        )
+                    }
 
                     // Mandatory Online Gate (blocks app usage completely when offline)
                     AnimatedVisibility(

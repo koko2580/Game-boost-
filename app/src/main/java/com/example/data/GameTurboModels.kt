@@ -107,8 +107,24 @@ data class PermissionStatus(
     val dndGranted: Boolean = false,
     val overlayGranted: Boolean = false,
     val writeSettingsGranted: Boolean = false,
-    val usageStatsGranted: Boolean = false
-)
+    val usageStatsGranted: Boolean = false,
+    val notificationsGranted: Boolean = true
+) {
+    val grantedCount: Int
+        get() = listOf(
+            overlayGranted,
+            dndGranted,
+            writeSettingsGranted,
+            usageStatsGranted,
+            notificationsGranted
+        ).count { it }
+
+    val totalCount: Int
+        get() = 5
+
+    val allGranted: Boolean
+        get() = grantedCount == totalCount
+}
 
 data class BoostResult(
     val freedMb: Int,
@@ -179,7 +195,8 @@ data class GameTurboSettings(
     val totalUsageMinutes: Int = 0,
     // Turbo Time Credit (Rewarded Ad Gate)
     val turboTimeExpiresAtMs: Long = 0L,
-    val adsWatchedCount: Int = 0
+    val adsWatchedCount: Int = 0,
+    val hasCompletedPermissionSetup: Boolean = false
 )
 
 const val AD_REWARD_DURATION_MS: Long = 3_600_000L // 1 hour per ad

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.CpuMode
 import com.example.data.GameAudioEnhancer
@@ -27,6 +28,7 @@ import com.example.ui.components.NetworkGateOverlay
 import com.example.ui.components.OverlayCallbacks
 import com.example.ui.screens.LauncherHomeScreen
 import com.example.ui.screens.PerformanceActions
+import com.example.ui.screens.PermissionsScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.TurboGameXTheme
 import kotlinx.coroutines.test.runTest
@@ -330,7 +332,7 @@ class TurboXMatrixAndPerfTest {
     }
 
     @Test
-    @Config(sdk = [36], qualifiers = "w840dp-h400dp")
+    @Config(sdk = [36], qualifiers = "w840dp-h360dp")
     fun `landscape ROG overlay renders armoury HUD and dispatches boost and minimize callbacks`() {
         var boosted = false
         var minimized = false
@@ -356,15 +358,16 @@ class TurboXMatrixAndPerfTest {
         }
         composeTestRule.mainClock.advanceTimeBy(250L)
         composeTestRule.onNodeWithTag("overlay_rog_root").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("overlay_ram_boost_pill").performClick()
-        composeTestRule.onNodeWithTag("overlay_g_handle").performClick()
+        composeTestRule.onNodeWithTag("overlay_ram_boost_pill").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("overlay_g_handle").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithText("X-MODE").assertIsDisplayed()
         assertTrue(boosted)
         assertTrue(minimized)
     }
 
     @Test
-    @Config(sdk = [36], qualifiers = "w360dp-h800dp")
-    fun `portrait Xiaomi Hyper overlay renders smoothly and cycles CPU mode`() {
+    @Config(sdk = [36], qualifiers = "w840dp-h360dp")
+    fun `landscape Xiaomi Hyper sidebar renders smoothly and cycles CPU mode`() {
         var selectedMode: CpuMode? = null
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.setContent {
@@ -390,13 +393,14 @@ class TurboXMatrixAndPerfTest {
         }
         composeTestRule.mainClock.advanceTimeBy(250L)
         composeTestRule.onNodeWithTag("overlay_xiaomi_root").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("overlay_cpu_mode_pill").performClick()
+        composeTestRule.onNodeWithTag("overlay_cpu_mode_pill").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("overlay_ram_boost_pill").assertIsDisplayed()
         assertEquals(CpuMode.ACCELERATION, selectedMode)
     }
 
     @Test
-    @Config(sdk = [36], qualifiers = "w840dp-h400dp")
-    fun `landscape RedMagic Cyber overlay renders cooling turbine HUD and handles interactions`() {
+    @Config(sdk = [36], qualifiers = "w840dp-h360dp")
+    fun `landscape RedMagic Cyber overlay renders 3-wing cooling turbine HUD and energy faders`() {
         var boosted = false
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.setContent {
@@ -420,8 +424,81 @@ class TurboXMatrixAndPerfTest {
         }
         composeTestRule.mainClock.advanceTimeBy(250L)
         composeTestRule.onNodeWithTag("overlay_redmagic_root").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("overlay_ram_boost_pill").performClick()
+        composeTestRule.onNodeWithText("ENERGY FADER").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("overlay_ram_boost_pill").assertIsDisplayed().performClick()
         assertTrue(boosted)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w412dp-h915dp")
+    fun `first launch permissions onboarding displays all five cards and triggers grant-all plus skip`() {
+        var overlayRequested = false
+        var completed = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                PermissionsScreen(
+                    permissions = PermissionStatus(
+                        dndGranted = false,
+                        overlayGranted = false,
+                        writeSettingsGranted = false,
+                        usageStatsGranted = false,
+                        notificationsGranted = true
+                    ),
+                    onRefreshPermissions = {},
+                    onRequestDnd = {},
+                    onRequestOverlay = { overlayRequested = true },
+                    onRequestWriteSettings = {},
+                    onRequestUsageStats = {},
+                    onBack = {},
+                    isOnboardingMode = true,
+                    onCompleteOnboarding = { completed = true }
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("permissions_screen_root").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("perm_overlay_card").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("perm_dnd_card").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("perm_write_settings_card").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("perm_usage_stats_card").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("perm_notifications_card").performScrollTo().assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("grant_all_permissions_btn").assertIsDisplayed().performClick()
+        assertTrue(overlayRequested)
+
+        composeTestRule.onNodeWithTag("skip_permissions_btn").assertIsDisplayed().performClick()
+        assertTrue(completed)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w412dp-h915dp")
+    fun `permissions onboarding shows all systems armed when all five granted`() {
+        var completed = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                PermissionsScreen(
+                    permissions = PermissionStatus(
+                        dndGranted = true,
+                        overlayGranted = true,
+                        writeSettingsGranted = true,
+                        usageStatsGranted = true,
+                        notificationsGranted = true
+                    ),
+                    onRefreshPermissions = {},
+                    onRequestDnd = {},
+                    onRequestOverlay = {},
+                    onRequestWriteSettings = {},
+                    onRequestUsageStats = {},
+                    onBack = {},
+                    isOnboardingMode = true,
+                    onCompleteOnboarding = { completed = true }
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("ALL SYSTEMS ARMED").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("grant_all_permissions_btn").assertIsDisplayed().performClick()
+        assertTrue(completed)
     }
 
     private fun emptyPerformanceActions() = PerformanceActions(

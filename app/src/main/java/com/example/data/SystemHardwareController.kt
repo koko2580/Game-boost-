@@ -25,10 +25,12 @@ import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import android.util.LruCache
+import android.Manifest
 import android.view.Display
 import android.view.WindowManager
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -61,11 +63,20 @@ class SystemHardwareController(private val context: Context) {
         val overlayGranted = Settings.canDrawOverlays(context)
         val writeSettingsGranted = Settings.System.canWrite(context)
         val usageStatsGranted = checkUsageStatsPermission()
+        val notificationsGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
         return PermissionStatus(
             dndGranted = dndGranted,
             overlayGranted = overlayGranted,
             writeSettingsGranted = writeSettingsGranted,
-            usageStatsGranted = usageStatsGranted
+            usageStatsGranted = usageStatsGranted,
+            notificationsGranted = notificationsGranted
         )
     }
 
