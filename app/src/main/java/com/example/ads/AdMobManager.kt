@@ -2,9 +2,12 @@ package com.example.ads
 
 import android.app.Activity
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +20,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +34,7 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.TurboGameApplication
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.MidnightSurface
 import com.example.ui.theme.TextMuted
@@ -57,6 +63,45 @@ object AdUnitIds {
     const val APP_OPEN = "ca-app-pub-5984576938417142/2587838493"
 }
 
+object AdLoadPolicy {
+    private val THROTTLE_BACKOFF_MS = longArrayOf(60_000L, 90_000L, 120_000L)
+    private val STANDARD_BACKOFF_MS = longArrayOf(15_000L, 30_000L, 60_000L, 120_000L)
+
+    fun isThrottleError(errorCode: Int, errorMessage: String?): Boolean {
+        val lower = errorMessage?.lowercase().orEmpty()
+        return errorCode == AdRequest.ERROR_CODE_INVALID_REQUEST ||
+            lower.contains("too many") ||
+            lower.contains("wait a few seconds") ||
+            lower.contains("recently failed")
+    }
+
+    fun computeBackoffMs(
+        errorCode: Int,
+        errorMessage: String?,
+        consecutiveFailures: Int
+    ): Long {
+        val index = (consecutiveFailures - 1).coerceAtLeast(0)
+        return if (isThrottleError(errorCode, errorMessage)) {
+            THROTTLE_BACKOFF_MS[index.coerceAtMost(THROTTLE_BACKOFF_MS.lastIndex)]
+        } else {
+            STANDARD_BACKOFF_MS[index.coerceAtMost(STANDARD_BACKOFF_MS.lastIndex)]
+        }
+    }
+
+    fun sanitizeUserErrorMessage(errorCode: Int, errorMessage: String?): String {
+        return when {
+            isThrottleError(errorCode, errorMessage) ->
+                "Ad server is warming up. Auto-retrying shortly..."
+            errorCode == AdRequest.ERROR_CODE_NO_FILL ->
+                "Ad inventory is busy right now. Retrying automatically..."
+            errorCode == AdRequest.ERROR_CODE_NETWORK_ERROR ->
+                "Connection unstable while loading ad. Retrying shortly..."
+            else ->
+                "Ad is temporarily unavailable. Please wait a moment."
+        }
+    }
+}
+
 class AdMobManager(private val appContext: Context) {
 
     companion object {
@@ -64,20 +109,43 @@ class AdMobManager(private val appContext: Context) {
         private const val APP_OPEN_COOLDOWN_MS = 600_000L // 10 minutes between App Open ads
         private const val INTERSTITIAL_COOLDOWN_MS = 240_000L // 4 minutes between Interstitials
         private const val FOUR_HOURS_MS = 4L * 3600L * 1000L
+        private const val MAX_AUTO_RETRIES = 3
     }
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     private var isInitialized = false
+    private val _isSdkInitialized = MutableStateFlow(false)
+    val isSdkInitialized: StateFlow<Boolean> = _isSdkInitialized.asStateFlow()
+
+    private var pendingAppOpenLoad = false
+    private var pendingInterstitialLoad = false
+    private var pendingRewardedLoad = false
+
     private var appOpenAd: AppOpenAd? = null
     private var appOpenLoadTimeMs: Long = 0L
     private var isLoadingAppOpen = false
+    private var appOpenFailures = 0
+    private var appOpenNextAllowedElapsedMs = 0L
+    private var appOpenRetryRunnable: Runnable? = null
     private var lastAppOpenShownMs: Long = 0L
     private var suppressAppOpenUntilMs: Long = 0L
 
     private var interstitialAd: InterstitialAd? = null
     private var isLoadingInterstitial = false
+    private var interstitialFailures = 0
+    private var interstitialNextAllowedElapsedMs = 0L
+    private var interstitialRetryRunnable: Runnable? = null
     private var lastInterstitialShownMs: Long = 0L
 
     private var rewardedAd: RewardedAd? = null
+    private var rewardedFailures = 0
+    private var rewardedNextAllowedElapsedMs = 0L
+    private var rewardedRetryRunnable: Runnable? = null
+    private var rewardedCountdownRunnable: Runnable? = null
+
+    private var bannerFailures = 0
+    private var bannerNextAllowedElapsedMs = 0L
 
     private val _rewardedAdReady = MutableStateFlow(false)
     val rewardedAdReady: StateFlow<Boolean> = _rewardedAdReady.asStateFlow()
@@ -88,6 +156,9 @@ class AdMobManager(private val appContext: Context) {
     private val _rewardedAdError = MutableStateFlow<String?>(null)
     val rewardedAdError: StateFlow<String?> = _rewardedAdError.asStateFlow()
 
+    private val _rewardedCooldownSeconds = MutableStateFlow(0)
+    val rewardedCooldownSeconds: StateFlow<Int> = _rewardedCooldownSeconds.asStateFlow()
+
     @Volatile
     var isShowingFullScreenAd: Boolean = false
         private set
@@ -95,14 +166,29 @@ class AdMobManager(private val appContext: Context) {
     fun initialize() {
         if (isInitialized || isRobolectricEnvironment()) return
         isInitialized = true
-        val mainHandler = Handler(Looper.getMainLooper())
         Thread {
             runCatching {
                 MobileAds.initialize(appContext) {
                     mainHandler.post {
-                        loadAppOpenAd()
-                        loadInterstitialAd()
-                        loadRewardedAd()
+                        _isSdkInitialized.value = true
+                        if (pendingRewardedLoad) {
+                            pendingRewardedLoad = false
+                            loadRewardedAd()
+                        } else {
+                            loadRewardedAd()
+                        }
+                        if (pendingInterstitialLoad) {
+                            pendingInterstitialLoad = false
+                            loadInterstitialAd()
+                        } else {
+                            loadInterstitialAd()
+                        }
+                        if (pendingAppOpenLoad) {
+                            pendingAppOpenLoad = false
+                            loadAppOpenAd()
+                        } else {
+                            loadAppOpenAd()
+                        }
                     }
                 }
             }.onFailure { e ->
@@ -115,12 +201,52 @@ class AdMobManager(private val appContext: Context) {
         suppressAppOpenUntilMs = System.currentTimeMillis() + durationMs
     }
 
+    fun isNetworkAvailable(): Boolean {
+        if (isRobolectricEnvironment()) return true
+        return runCatching {
+            val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return@runCatching true
+            val network = cm.activeNetwork ?: return@runCatching false
+            val caps = cm.getNetworkCapabilities(network) ?: return@runCatching false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        }.getOrDefault(true)
+    }
+
+    // region Banner Throttle Helpers
+    fun canAttemptBannerLoad(): Boolean {
+        if (isRobolectricEnvironment()) return false
+        if (!_isSdkInitialized.value) return false
+        if (!isNetworkAvailable()) return false
+        return SystemClock.elapsedRealtime() >= bannerNextAllowedElapsedMs
+    }
+
+    fun recordBannerSuccess() {
+        bannerFailures = 0
+        bannerNextAllowedElapsedMs = 0L
+    }
+
+    fun recordBannerFailure(error: LoadAdError) {
+        bannerFailures++
+        val backoff = AdLoadPolicy.computeBackoffMs(error.code, error.message, bannerFailures)
+        bannerNextAllowedElapsedMs = SystemClock.elapsedRealtime() + backoff
+        Log.w("AdMobBannerBar", "Banner paused ${backoff / 1000}s after error code ${error.code}")
+    }
+    // endregion
+
     // region App Open Ad
     private fun isAppOpenAvailable(): Boolean =
         appOpenAd != null && (Date().time - appOpenLoadTimeMs) < FOUR_HOURS_MS
 
     fun loadAppOpenAd() {
         if (isRobolectricEnvironment() || isLoadingAppOpen || isAppOpenAvailable()) return
+        if (!_isSdkInitialized.value) {
+            pendingAppOpenLoad = true
+            return
+        }
+        if (!isNetworkAvailable()) return
+        val now = SystemClock.elapsedRealtime()
+        if (now < appOpenNextAllowedElapsedMs) return
+
         isLoadingAppOpen = true
         AppOpenAd.load(
             appContext,
@@ -131,12 +257,25 @@ class AdMobManager(private val appContext: Context) {
                     appOpenAd = ad
                     appOpenLoadTimeMs = Date().time
                     isLoadingAppOpen = false
+                    appOpenFailures = 0
+                    appOpenNextAllowedElapsedMs = 0L
+                    appOpenRetryRunnable?.let { mainHandler.removeCallbacks(it) }
+                    appOpenRetryRunnable = null
                     Log.d(TAG, "AppOpenAd loaded")
                 }
 
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     isLoadingAppOpen = false
-                    Log.w(TAG, "AppOpenAd failed: ${error.code} - ${error.message}")
+                    appOpenFailures++
+                    val backoff = AdLoadPolicy.computeBackoffMs(error.code, error.message, appOpenFailures)
+                    appOpenNextAllowedElapsedMs = SystemClock.elapsedRealtime() + backoff
+                    Log.w(TAG, "AppOpenAd deferred ${backoff / 1000}s (code ${error.code})")
+                    if (appOpenFailures <= MAX_AUTO_RETRIES) {
+                        appOpenRetryRunnable?.let { mainHandler.removeCallbacks(it) }
+                        val runnable = Runnable { loadAppOpenAd() }
+                        appOpenRetryRunnable = runnable
+                        mainHandler.postDelayed(runnable, backoff)
+                    }
                 }
             }
         )
@@ -189,6 +328,14 @@ class AdMobManager(private val appContext: Context) {
     // region Interstitial Ad
     fun loadInterstitialAd() {
         if (isRobolectricEnvironment() || isLoadingInterstitial || interstitialAd != null) return
+        if (!_isSdkInitialized.value) {
+            pendingInterstitialLoad = true
+            return
+        }
+        if (!isNetworkAvailable()) return
+        val now = SystemClock.elapsedRealtime()
+        if (now < interstitialNextAllowedElapsedMs) return
+
         isLoadingInterstitial = true
         InterstitialAd.load(
             appContext,
@@ -198,13 +345,26 @@ class AdMobManager(private val appContext: Context) {
                 override fun onAdLoaded(ad: InterstitialAd) {
                     interstitialAd = ad
                     isLoadingInterstitial = false
+                    interstitialFailures = 0
+                    interstitialNextAllowedElapsedMs = 0L
+                    interstitialRetryRunnable?.let { mainHandler.removeCallbacks(it) }
+                    interstitialRetryRunnable = null
                     Log.d(TAG, "InterstitialAd loaded")
                 }
 
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     interstitialAd = null
                     isLoadingInterstitial = false
-                    Log.w(TAG, "InterstitialAd failed: ${error.code} - ${error.message}")
+                    interstitialFailures++
+                    val backoff = AdLoadPolicy.computeBackoffMs(error.code, error.message, interstitialFailures)
+                    interstitialNextAllowedElapsedMs = SystemClock.elapsedRealtime() + backoff
+                    Log.w(TAG, "InterstitialAd deferred ${backoff / 1000}s (code ${error.code})")
+                    if (interstitialFailures <= MAX_AUTO_RETRIES) {
+                        interstitialRetryRunnable?.let { mainHandler.removeCallbacks(it) }
+                        val runnable = Runnable { loadInterstitialAd() }
+                        interstitialRetryRunnable = runnable
+                        mainHandler.postDelayed(runnable, backoff)
+                    }
                 }
             }
         )
@@ -258,16 +418,68 @@ class AdMobManager(private val appContext: Context) {
     // endregion
 
     // region Rewarded Ad
+    private fun startRewardedCooldownTicker() {
+        rewardedCountdownRunnable?.let { mainHandler.removeCallbacks(it) }
+        val ticker = object : Runnable {
+            override fun run() {
+                val remMs = rewardedNextAllowedElapsedMs - SystemClock.elapsedRealtime()
+                if (remMs > 0L) {
+                    _rewardedCooldownSeconds.value = ((remMs + 999L) / 1000L).toInt()
+                    mainHandler.postDelayed(this, 1000L)
+                } else {
+                    _rewardedCooldownSeconds.value = 0
+                    rewardedCountdownRunnable = null
+                }
+            }
+        }
+        rewardedCountdownRunnable = ticker
+        ticker.run()
+    }
+
+    private fun clearRewardedTimers() {
+        rewardedRetryRunnable?.let { mainHandler.removeCallbacks(it) }
+        rewardedRetryRunnable = null
+        rewardedCountdownRunnable?.let { mainHandler.removeCallbacks(it) }
+        rewardedCountdownRunnable = null
+        _rewardedCooldownSeconds.value = 0
+    }
+
     fun loadRewardedAd(onLoadedCallback: (() -> Unit)? = null) {
         if (isRobolectricEnvironment()) return
         if (rewardedAd != null) {
             _rewardedAdReady.value = true
             _rewardedAdLoading.value = false
             _rewardedAdError.value = null
+            clearRewardedTimers()
             onLoadedCallback?.invoke()
             return
         }
         if (_rewardedAdLoading.value) return
+
+        if (!_isSdkInitialized.value) {
+            pendingRewardedLoad = true
+            _rewardedAdLoading.value = true
+            _rewardedAdError.value = null
+            return
+        }
+
+        if (!isNetworkAvailable()) {
+            _rewardedAdLoading.value = false
+            _rewardedAdError.value = "Connect to Wi-Fi or mobile data to load ad."
+            return
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        if (now < rewardedNextAllowedElapsedMs) {
+            val remainingSec = ((rewardedNextAllowedElapsedMs - now + 999L) / 1000L).toInt()
+            _rewardedCooldownSeconds.value = remainingSec
+            _rewardedAdLoading.value = false
+            if (_rewardedAdError.value.isNullOrBlank()) {
+                _rewardedAdError.value = "Ad server is warming up. Auto-retrying shortly..."
+            }
+            startRewardedCooldownTicker()
+            return
+        }
 
         _rewardedAdLoading.value = true
         _rewardedAdError.value = null
@@ -279,6 +491,9 @@ class AdMobManager(private val appContext: Context) {
             object : RewardedAdLoadCallback() {
                 override fun onAdLoaded(ad: RewardedAd) {
                     rewardedAd = ad
+                    rewardedFailures = 0
+                    rewardedNextAllowedElapsedMs = 0L
+                    clearRewardedTimers()
                     _rewardedAdReady.value = true
                     _rewardedAdLoading.value = false
                     _rewardedAdError.value = null
@@ -288,10 +503,21 @@ class AdMobManager(private val appContext: Context) {
 
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     rewardedAd = null
+                    rewardedFailures++
+                    val backoffMs = AdLoadPolicy.computeBackoffMs(error.code, error.message, rewardedFailures)
+                    rewardedNextAllowedElapsedMs = SystemClock.elapsedRealtime() + backoffMs
                     _rewardedAdReady.value = false
                     _rewardedAdLoading.value = false
-                    _rewardedAdError.value = "${error.message} (code ${error.code})"
-                    Log.w(TAG, "RewardedAd failed: ${error.code} - ${error.message}")
+                    _rewardedAdError.value = AdLoadPolicy.sanitizeUserErrorMessage(error.code, error.message)
+                    startRewardedCooldownTicker()
+                    Log.w(TAG, "RewardedAd deferred ${backoffMs / 1000}s (code ${error.code})")
+
+                    if (rewardedFailures <= MAX_AUTO_RETRIES) {
+                        rewardedRetryRunnable?.let { mainHandler.removeCallbacks(it) }
+                        val runnable = Runnable { loadRewardedAd() }
+                        rewardedRetryRunnable = runnable
+                        mainHandler.postDelayed(runnable, backoffMs + 250L)
+                    }
                 }
             }
         )
@@ -337,7 +563,7 @@ class AdMobManager(private val appContext: Context) {
                 rewardedAd = null
                 _rewardedAdReady.value = false
                 isShowingFullScreenAd = false
-                _rewardedAdError.value = adError.message
+                _rewardedAdError.value = "Unable to display ad right now. Retrying shortly..."
                 loadRewardedAd()
                 onClosedWithoutReward()
             }
@@ -378,6 +604,13 @@ fun AdMobBannerBar(
     }
 
     val context = LocalContext.current
+    val adMobManager = remember(context) {
+        (context.applicationContext as? TurboGameApplication)?.adMobManager
+    }
+    val sdkReady by (adMobManager?.isSdkInitialized ?: remember { MutableStateFlow(true) })
+        .collectAsState()
+
+    var hasRequestedLoad by remember { mutableStateOf(false) }
 
     BoxWithConstraints(
         modifier = modifier
@@ -400,11 +633,24 @@ fun AdMobBannerBar(
                 adUnitId = AdUnitIds.BANNER
                 setAdSize(adSize)
                 adListener = object : AdListener() {
+                    override fun onAdLoaded() {
+                        adMobManager?.recordBannerSuccess()
+                    }
+
                     override fun onAdFailedToLoad(error: LoadAdError) {
-                        Log.w("AdMobBannerBar", "Banner failed: ${error.code} - ${error.message}")
+                        adMobManager?.recordBannerFailure(error)
                     }
                 }
-                loadAd(AdRequest.Builder().build())
+            }
+        }
+
+        LaunchedEffect(sdkReady, adView) {
+            if (sdkReady && !hasRequestedLoad) {
+                val allowed = adMobManager?.canAttemptBannerLoad() ?: true
+                if (allowed) {
+                    hasRequestedLoad = true
+                    adView.loadAd(AdRequest.Builder().build())
+                }
             }
         }
 

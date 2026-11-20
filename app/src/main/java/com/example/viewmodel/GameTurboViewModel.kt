@@ -31,6 +31,7 @@ import com.example.security.SecurityAuditReport
 import com.example.service.GameOverlayService
 import com.example.service.ScreenCaptureActivity
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -127,6 +128,9 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
 
     val rewardedAdError: StateFlow<String?> =
         adMobManager?.rewardedAdError ?: MutableStateFlow<String?>(null).asStateFlow()
+
+    val rewardedCooldownSeconds: StateFlow<Int> =
+        adMobManager?.rewardedCooldownSeconds ?: MutableStateFlow(0).asStateFlow()
 
     private val _remainingTurboSeconds = MutableStateFlow(0L)
     val remainingTurboSeconds: StateFlow<Long> = _remainingTurboSeconds.asStateFlow()
@@ -267,7 +271,13 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun openWatchAdPrompt(targetGameName: String? = null, launchAfterReward: Boolean = false) {
         hardware.audioEnhancer.pulseHaptic(false)
-        adMobManager?.loadRewardedAd()
+        if (adMobManager != null &&
+            !adMobManager.rewardedAdReady.value &&
+            !adMobManager.rewardedAdLoading.value &&
+            adMobManager.rewardedCooldownSeconds.value == 0
+        ) {
+            adMobManager.loadRewardedAd()
+        }
         _adStep.value = RewardedAdStep.TimeGatePrompt(
             targetGameName = targetGameName,
             launchAfterReward = launchAfterReward,
@@ -276,7 +286,12 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun retryLoadRewardedAd() {
-        adMobManager?.loadRewardedAd()
+        val manager = adMobManager ?: return
+        if (manager.rewardedCooldownSeconds.value > 0) {
+            showStatus("Ad warming up — auto-retrying in ${manager.rewardedCooldownSeconds.value}s")
+            return
+        }
+        manager.loadRewardedAd()
     }
 
     fun watchRealRewardedAd(activity: Activity?) {
@@ -289,11 +304,15 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
 
         if (adMobManager.rewardedAdReady.value) {
             showLoadedRewardedAd(activity, currentStep.launchAfterReward)
+        } else if (adMobManager.rewardedCooldownSeconds.value > 0) {
+            showStatus("Ad warming up — ready in ${adMobManager.rewardedCooldownSeconds.value}s")
         } else {
             _adStep.value = currentStep.copy(waitingForLoad = true)
             adMobManager.loadRewardedAd()
             viewModelScope.launch {
-                adMobManager.rewardedAdLoading.first { !it }
+                withTimeoutOrNull(12_000L) {
+                    adMobManager.rewardedAdLoading.first { !it }
+                }
                 val activeStep = _adStep.value as? RewardedAdStep.TimeGatePrompt
                 if (activeStep != null && activeStep.waitingForLoad) {
                     if (adMobManager.rewardedAdReady.value && !activity.isFinishing && !activity.isDestroyed) {

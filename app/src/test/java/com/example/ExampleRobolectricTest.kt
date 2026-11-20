@@ -95,4 +95,19 @@ class ExampleRobolectricTest {
     assertEquals(true, audit.isSafeForGameplay)
     assertEquals(true, audit.packageIntegrityOk)
   }
+
+  @Test
+  fun `ad load policy enforces cooldown backoff and sanitizes raw sdk messages`() {
+    val rawThrottle = "Error building request URL: Too many recently failed requests for ad unit ID: ca-app-pub-5984576938417142/5620184189. You must wait a few seconds before making another ad request. (code 1)"
+    assertEquals(true, com.example.ads.AdLoadPolicy.isThrottleError(1, rawThrottle))
+    assertEquals(60_000L, com.example.ads.AdLoadPolicy.computeBackoffMs(1, rawThrottle, 1))
+    assertEquals(90_000L, com.example.ads.AdLoadPolicy.computeBackoffMs(1, rawThrottle, 2))
+    assertEquals(15_000L, com.example.ads.AdLoadPolicy.computeBackoffMs(3, "No fill.", 1))
+    assertEquals(30_000L, com.example.ads.AdLoadPolicy.computeBackoffMs(3, "No fill.", 2))
+
+    val sanitized = com.example.ads.AdLoadPolicy.sanitizeUserErrorMessage(1, rawThrottle)
+    assertEquals(false, sanitized.contains("ca-app-pub"))
+    assertEquals(false, sanitized.contains("request URL"))
+    assertEquals(false, sanitized.contains("code 1"))
+  }
 }

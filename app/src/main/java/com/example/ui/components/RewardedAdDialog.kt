@@ -42,6 +42,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberElevated
+import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldBright
 import com.example.ui.theme.LocalTurboAccent
 import com.example.ui.theme.MidnightSurface
@@ -59,6 +60,7 @@ fun RewardedAdDialog(
     adReady: Boolean,
     adLoading: Boolean,
     adError: String?,
+    cooldownSeconds: Int = 0,
     onWatchAd: () -> Unit,
     onRetryLoad: () -> Unit,
     onDismiss: () -> Unit
@@ -70,6 +72,7 @@ fun RewardedAdDialog(
 
         is RewardedAdStep.TimeGatePrompt -> {
             val isLoadingNow = adLoading || step.waitingForLoad
+            val isCoolingDown = !adReady && !isLoadingNow && cooldownSeconds > 0
             Dialog(
                 onDismissRequest = onDismiss,
                 properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -133,7 +136,7 @@ fun RewardedAdDialog(
                             textAlign = TextAlign.Center
                         )
 
-                        // Reward Summary Card + Real AdMob Load State
+                        // Reward Summary Card + Clean Cooldown / Load Status
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -141,7 +144,7 @@ fun RewardedAdDialog(
                                 .background(CyberElevated)
                                 .border(1.dp, CyberBorder, RoundedCornerShape(14.dp))
                                 .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -177,44 +180,50 @@ fun RewardedAdDialog(
                                 Text(
                                     text = when {
                                         adReady -> "Ad Ready"
-                                        isLoadingNow -> "Loading..."
-                                        else -> "Not Ready"
+                                        isLoadingNow -> "Preparing..."
+                                        isCoolingDown -> "Ready in ${cooldownSeconds}s"
+                                        else -> "Tap to Load"
                                     },
                                     style = MaterialTheme.typography.labelMedium,
                                     color = when {
                                         adReady -> EmeraldBright
-                                        isLoadingNow -> CyberAmber
-                                        else -> CyberAmber
+                                        isLoadingNow -> ElectricCyan
+                                        isCoolingDown -> CyberAmber
+                                        else -> TextSecondary
                                     }
                                 )
                             }
 
-                            if (!adError.isNullOrBlank()) {
+                            if (!adReady && !isLoadingNow && (!adError.isNullOrBlank() || isCoolingDown)) {
+                                val statusText = adError ?: "Preparing next ad automatically..."
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        text = adError,
+                                        text = statusText,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = CyberAmber,
+                                        color = TextSecondary,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     OutlinedButton(
                                         onClick = onRetryLoad,
+                                        enabled = !isCoolingDown,
                                         modifier = Modifier
                                             .testTag("retry_ad_load_button")
                                             .height(48.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Rounded.Refresh,
-                                            contentDescription = "Retry ad load",
+                                            contentDescription = "Refresh ad",
                                             modifier = Modifier.size(16.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Retry")
+                                        Text(
+                                            text = if (isCoolingDown) "${cooldownSeconds}s" else "Refresh"
+                                        )
                                     }
                                 }
                             }
@@ -236,7 +245,7 @@ fun RewardedAdDialog(
                             }
                             Button(
                                 onClick = onWatchAd,
-                                enabled = !step.waitingForLoad,
+                                enabled = !step.waitingForLoad && !isCoolingDown,
                                 colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier
@@ -244,7 +253,7 @@ fun RewardedAdDialog(
                                     .weight(1.6f)
                                     .height(48.dp)
                             ) {
-                                if (step.waitingForLoad) {
+                                if (step.waitingForLoad || isLoadingNow) {
                                     CircularProgressIndicator(
                                         color = Color.White,
                                         strokeWidth = 2.dp,
@@ -264,7 +273,11 @@ fun RewardedAdDialog(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = if (adReady) "Watch Ad (+1h)" else "Load & Watch Ad",
+                                        text = when {
+                                            adReady -> "Watch Ad (+1h)"
+                                            isCoolingDown -> "Wait ${cooldownSeconds}s..."
+                                            else -> "Load & Watch Ad"
+                                        },
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White
                                     )

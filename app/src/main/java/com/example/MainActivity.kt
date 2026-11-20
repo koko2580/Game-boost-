@@ -120,6 +120,7 @@ class MainActivity : ComponentActivity() {
             val rewardedAdReady by viewModel.rewardedAdReady.collectAsStateWithLifecycle()
             val rewardedAdLoading by viewModel.rewardedAdLoading.collectAsStateWithLifecycle()
             val rewardedAdError by viewModel.rewardedAdError.collectAsStateWithLifecycle()
+            val rewardedCooldownSeconds by viewModel.rewardedCooldownSeconds.collectAsStateWithLifecycle()
             val performanceStatus by viewModel.performanceStatus.collectAsStateWithLifecycle()
             val securityAudit by viewModel.securityAudit.collectAsStateWithLifecycle()
 
@@ -452,6 +453,7 @@ class MainActivity : ComponentActivity() {
                         adReady = rewardedAdReady,
                         adLoading = rewardedAdLoading,
                         adError = rewardedAdError,
+                        cooldownSeconds = rewardedCooldownSeconds,
                         onWatchAd = { viewModel.watchRealRewardedAd(this@MainActivity) },
                         onRetryLoad = viewModel::retryLoadRewardedAd,
                         onDismiss = viewModel::dismissAdDialog
