@@ -20,14 +20,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -46,7 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.InstalledAppInfo
 import com.example.ui.components.CyberToggleSwitch
-import com.example.ui.components.TurboTopLogoCorner
+import com.example.ui.components.TurboXTopBar
 import com.example.ui.components.rememberTurboFlingBehavior
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberElevated
@@ -87,44 +85,17 @@ fun AddAppsScreen(
             .background(ObsidianVoid)
             .systemBarsPadding()
     ) {
-        // Header matching Screenshot 5
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MidnightSurface)
-                .padding(end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        TurboXTopBar(
+            title = "Game Library",
+            subtitle = "${addedPackages.size} Selected for Turbo X",
+            onBack = onBack,
+            backTestTag = "add_apps_back_btn"
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TurboTopLogoCorner()
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.testTag("add_apps_back_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Back",
-                        tint = TextPrimary
-                    )
-                }
-                Text(
-                    text = "Add Apps",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = TextPrimary
-                )
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = showAddedOnly,
-                    onClick = { showAddedOnly = !showAddedOnly },
-                    label = { Text("Added (${addedPackages.size})") }
-                )
-            }
+            FilterChip(
+                selected = showAddedOnly,
+                onClick = { showAddedOnly = !showAddedOnly },
+                label = { Text("Added (${addedPackages.size})") }
+            )
         }
 
         // Search Box

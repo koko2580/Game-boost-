@@ -367,6 +367,10 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         adMobManager.showInterstitialIfReady(activity, onComplete)
     }
 
+    fun suppressAppOpenForExternalFlow() {
+        adMobManager?.suppressAppOpenTemporarily()
+    }
+
     fun dismissAdDialog() {
         _adStep.value = RewardedAdStep.Hidden
     }
@@ -539,6 +543,7 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun openDeveloperRenderingOptions() {
+        adMobManager?.suppressAppOpenTemporarily()
         val openedDev = hardware.performanceEngine.openDeveloperRenderingOptions()
         if (!openedDev) {
             showStatus("Enable Developer Options in About Phone -> Tap Build Number 7x")
@@ -905,6 +910,7 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         ) + _sessionHistory.value.take(19)
         updateSettings { it.copy(totalUsageMinutes = it.totalUsageMinutes + 1) }
 
+        adMobManager?.suppressAppOpenTemporarily(180_000L)
         val launched = hardware.launchPackage(pkg)
         if (!launched) {
             showStatus("Could not launch $gameName — opening Game Panel")

@@ -10,8 +10,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -61,8 +63,8 @@ import com.example.ui.components.GamePanelOverlayContent
 import com.example.ui.components.LocalTurboTouchConfig
 import com.example.ui.components.OverlayCallbacks
 import com.example.ui.components.RewardedAdDialog
+import com.example.ui.components.TurboCockpitReactor
 import com.example.ui.components.TurboTouchConfig
-import com.example.ui.components.TurboXEmblem
 import com.example.ui.components.cpuModeColor
 import com.example.ui.screens.AddAppsScreen
 import com.example.ui.screens.LauncherHomeScreen
@@ -225,10 +227,7 @@ class MainActivity : ComponentActivity() {
                                 onNavigateAddApps = { navController.navigate(ROUTE_ADD_APPS) },
                                 onNavigateSettings = { navController.navigate(ROUTE_SETTINGS) },
                                 onNavigatePermissions = { navController.navigate(ROUTE_PERMISSIONS) },
-                                onBoostRam = {
-                                    viewModel.performBoost()
-                                    viewModel.maybeShowInterstitial(this@MainActivity)
-                                },
+                                onBoostRam = viewModel::performBoost,
                                 onRunPingTest = viewModel::runPingTest,
                                 onSelectWallpaperTheme = viewModel::setWallpaperTheme,
                                 onDismissStatus = viewModel::clearStatus
@@ -282,11 +281,7 @@ class MainActivity : ComponentActivity() {
                                 isLoading = appsLoading,
                                 getAppIcon = viewModel::getAppIcon,
                                 onToggleApp = viewModel::toggleGameAdded,
-                                onBack = {
-                                    viewModel.maybeShowInterstitial(this@MainActivity) {
-                                        navController.popBackStack()
-                                    }
-                                }
+                                onBack = { navController.popBackStack() }
                             )
                         }
 
@@ -294,14 +289,19 @@ class MainActivity : ComponentActivity() {
                             PermissionsScreen(
                                 permissions = permissions,
                                 onRefreshPermissions = viewModel::refreshPermissionsAndHardware,
-                                onRequestDnd = viewModel.hardware::openDndPermissionSettings,
-                                onRequestOverlay = viewModel.hardware::openOverlayPermissionSettings,
-                                onRequestWriteSettings = viewModel.hardware::openWriteSettingsPermission,
-                                onBack = {
-                                    viewModel.maybeShowInterstitial(this@MainActivity) {
-                                        navController.popBackStack()
-                                    }
-                                }
+                                onRequestDnd = {
+                                    viewModel.suppressAppOpenForExternalFlow()
+                                    viewModel.hardware.openDndPermissionSettings()
+                                },
+                                onRequestOverlay = {
+                                    viewModel.suppressAppOpenForExternalFlow()
+                                    viewModel.hardware.openOverlayPermissionSettings()
+                                },
+                                onRequestWriteSettings = {
+                                    viewModel.suppressAppOpenForExternalFlow()
+                                    viewModel.hardware.openWriteSettingsPermission()
+                                },
+                                onBack = { navController.popBackStack() }
                             )
                         }
                     }
@@ -435,8 +435,8 @@ class MainActivity : ComponentActivity() {
                     // GameMode Opening Animation Splash
                     AnimatedVisibility(
                         visible = launchingGameName != null,
-                        enter = fadeIn(),
-                        exit = fadeOut()
+                        enter = fadeIn(tween(220)) + scaleIn(initialScale = 0.92f, animationSpec = tween(260)),
+                        exit = fadeOut(tween(200))
                     ) {
                         GameLaunchAnimationOverlay(
                             gameName = launchingGameName ?: "",
@@ -489,14 +489,15 @@ private fun GameLaunchAnimationOverlay(
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.padding(24.dp)
         ) {
-            TurboXEmblem(
+            TurboCockpitReactor(
                 glowColor = glowColor,
                 animatePulse = true,
-                modifier = Modifier.size(180.dp)
+                centerTitle = "TURBO X",
+                modifier = Modifier.size(196.dp)
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "TURBO GAME MODE ENGAGED",
+                text = "TURBO X ENGINE ENGAGED",
                 style = MaterialTheme.typography.headlineMedium.copy(
                     fontFamily = RajdhaniFontFamily,
                     fontWeight = FontWeight.Bold,

@@ -61,8 +61,8 @@ class AdMobManager(private val appContext: Context) {
 
     companion object {
         private const val TAG = "AdMobManager"
-        private const val APP_OPEN_COOLDOWN_MS = 30_000L
-        private const val INTERSTITIAL_COOLDOWN_MS = 45_000L
+        private const val APP_OPEN_COOLDOWN_MS = 600_000L // 10 minutes between App Open ads
+        private const val INTERSTITIAL_COOLDOWN_MS = 240_000L // 4 minutes between Interstitials
         private const val FOUR_HOURS_MS = 4L * 3600L * 1000L
     }
 
@@ -71,8 +71,7 @@ class AdMobManager(private val appContext: Context) {
     private var appOpenLoadTimeMs: Long = 0L
     private var isLoadingAppOpen = false
     private var lastAppOpenShownMs: Long = 0L
-    private var hasShownColdStartAppOpen = false
-    private val coldStartTimestampMs = System.currentTimeMillis()
+    private var suppressAppOpenUntilMs: Long = 0L
 
     private var interstitialAd: InterstitialAd? = null
     private var isLoadingInterstitial = false
@@ -93,7 +92,7 @@ class AdMobManager(private val appContext: Context) {
     var isShowingFullScreenAd: Boolean = false
         private set
 
-    fun initialize(currentActivityProvider: () -> Activity? = { null }) {
+    fun initialize() {
         if (isInitialized || isRobolectricEnvironment()) return
         isInitialized = true
         val mainHandler = Handler(Looper.getMainLooper())
@@ -101,7 +100,7 @@ class AdMobManager(private val appContext: Context) {
             runCatching {
                 MobileAds.initialize(appContext) {
                     mainHandler.post {
-                        loadAppOpenAd(currentActivityProvider)
+                        loadAppOpenAd()
                         loadInterstitialAd()
                         loadRewardedAd()
                     }
@@ -112,11 +111,15 @@ class AdMobManager(private val appContext: Context) {
         }.start()
     }
 
+    fun suppressAppOpenTemporarily(durationMs: Long = 90_000L) {
+        suppressAppOpenUntilMs = System.currentTimeMillis() + durationMs
+    }
+
     // region App Open Ad
     private fun isAppOpenAvailable(): Boolean =
         appOpenAd != null && (Date().time - appOpenLoadTimeMs) < FOUR_HOURS_MS
 
-    fun loadAppOpenAd(currentActivityProvider: () -> Activity? = { null }) {
+    fun loadAppOpenAd() {
         if (isRobolectricEnvironment() || isLoadingAppOpen || isAppOpenAvailable()) return
         isLoadingAppOpen = true
         AppOpenAd.load(
@@ -129,14 +132,6 @@ class AdMobManager(private val appContext: Context) {
                     appOpenLoadTimeMs = Date().time
                     isLoadingAppOpen = false
                     Log.d(TAG, "AppOpenAd loaded")
-                    // Show once on cold start if loaded quickly while MainActivity is active
-                    if (!hasShownColdStartAppOpen &&
-                        System.currentTimeMillis() - coldStartTimestampMs <= 6000L
-                    ) {
-                        currentActivityProvider()?.let { act ->
-                            showAppOpenAdIfAvailable(act)
-                        }
-                    }
                 }
 
                 override fun onAdFailedToLoad(error: LoadAdError) {
@@ -148,12 +143,13 @@ class AdMobManager(private val appContext: Context) {
     }
 
     fun showAppOpenAdIfAvailable(activity: Activity, onComplete: () -> Unit = {}) {
-        if (isShowingFullScreenAd || activity.isFinishing || activity.isDestroyed) {
-            onComplete()
-            return
-        }
         val now = System.currentTimeMillis()
-        if (now - lastAppOpenShownMs < APP_OPEN_COOLDOWN_MS) {
+        if (isShowingFullScreenAd ||
+            activity.isFinishing ||
+            activity.isDestroyed ||
+            now < suppressAppOpenUntilMs ||
+            now - lastAppOpenShownMs < APP_OPEN_COOLDOWN_MS
+        ) {
             onComplete()
             return
         }
@@ -165,7 +161,6 @@ class AdMobManager(private val appContext: Context) {
             return
         }
 
-        hasShownColdStartAppOpen = true
         isShowingFullScreenAd = true
         ad.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdDismissedFullScreenContent() {
@@ -369,14 +364,15 @@ fun AdMobBannerBar(
     if (LocalInspectionMode.current || isRobolectricEnvironment()) {
         Box(
             modifier = modifier
+                .testTag("admob_banner_container")
                 .fillMaxWidth()
                 .height(52.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MidnightSurface)
-                .border(1.dp, CyberBorder, RoundedCornerShape(8.dp)),
+                .clip(RoundedCornerShape(12.dp))
+                .background(MidnightSurface.copy(alpha = 0.92f))
+                .border(1.dp, CyberBorder.copy(alpha = 0.7f), RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center
         ) {
-            Text("AdMob Banner", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            Text("Sponsored Banner", style = MaterialTheme.typography.labelSmall, color = TextMuted)
         }
         return
     }
@@ -386,7 +382,10 @@ fun AdMobBannerBar(
     BoxWithConstraints(
         modifier = modifier
             .testTag("admob_banner_container")
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MidnightSurface.copy(alpha = 0.94f))
+            .border(1.dp, CyberBorder.copy(alpha = 0.65f), RoundedCornerShape(12.dp)),
         contentAlignment = Alignment.Center
     ) {
         val widthDp = maxWidth.value.toInt().coerceIn(320, 728)

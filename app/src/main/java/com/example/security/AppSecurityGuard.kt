@@ -176,7 +176,10 @@ class AppSecurityGuard(private val context: Context) {
                         lower.contains("xposed") ||
                         lower.contains("lsposed") ||
                         lower.contains("edxposed") ||
-                        lower.contains("substrate")
+                        lower.contains("substrate") ||
+                        lower.contains("riru") ||
+                        lower.contains("zygisk") ||
+                        lower.contains("libgadget")
                 }
             }
         }.getOrDefault(false)

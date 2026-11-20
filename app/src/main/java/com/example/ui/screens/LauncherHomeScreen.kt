@@ -5,13 +5,27 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -27,6 +41,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -35,22 +50,25 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Analytics
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.BatteryStd
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Brush
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RocketLaunch
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Thermostat
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -69,6 +87,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -86,15 +105,15 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.ads.AdMobBannerBar
 import com.example.data.GameSessionRecord
 import com.example.data.GameTurboSettings
 import com.example.data.HardwareTelemetry
 import com.example.data.InstalledAppInfo
 import com.example.data.PermissionStatus
 import com.example.data.WallpaperTheme
-import com.example.ads.AdMobBannerBar
-import com.example.ui.components.SlantedTabShape
-import com.example.ui.components.TurboXEmblem
+import com.example.ui.components.TurboCockpitReactor
+import com.example.ui.components.TurboXLogoMark
 import com.example.ui.components.cpuModeColor
 import com.example.ui.components.formatCompactTurboClock
 import com.example.ui.components.rememberTurboFlingBehavior
@@ -143,7 +162,7 @@ fun LauncherHomeScreen(
 ) {
     val palette = LocalTurboAccent.current
     val modeGlowColor = cpuModeColor(settings.cpuMode, palette.accent)
-    var selectedBottomTab by remember { mutableIntStateOf(0) } // 0 = Lobby, 1 = DataBase Page
+    var selectedBottomTab by remember { mutableIntStateOf(0) } // 0 = Cockpit, 1 = Telemetry
     var showWallpaperDialog by remember { mutableStateOf(false) }
 
     var currentClock by remember { mutableStateOf(formatClock()) }
@@ -163,6 +182,9 @@ fun LauncherHomeScreen(
 
     val selectedGame = addedGames.find { it.packageName == settings.selectedGamePackage }
         ?: addedGames.firstOrNull()
+    val selectedGameIcon = remember(selectedGame?.packageName) {
+        selectedGame?.let { getAppIcon(it.packageName) }
+    }
 
     val context = LocalContext.current
     val customWallpaperBitmap = remember(settings.customWallpaperUri, settings.wallpaperTheme) {
@@ -194,10 +216,29 @@ fun LauncherHomeScreen(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(ObsidianVoid, Color(0xFF0E121E), ObsidianVoid)
+                    colors = listOf(
+                        ObsidianVoid,
+                        Color(0xFF0A0F1B),
+                        ObsidianVoid
+                    )
                 )
             )
     ) {
+        // Subtle top-left signature ambient glow
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            modeGlowColor.copy(alpha = 0.11f),
+                            Color.Transparent
+                        ),
+                        radius = 850f
+                    )
+                )
+        )
+
         if (customWallpaperBitmap != null) {
             Image(
                 bitmap = customWallpaperBitmap,
@@ -205,7 +246,7 @@ fun LauncherHomeScreen(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .alpha(0.32f)
+                    .alpha(0.30f)
             )
         }
 
@@ -217,7 +258,7 @@ fun LauncherHomeScreen(
             val isWide = maxWidth >= 600.dp
 
             Column(modifier = Modifier.fillMaxSize()) {
-                // TOP HEADER BAR
+                // ORIGINAL TURBO X HEADER BAR
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -225,27 +266,43 @@ fun LauncherHomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Brand + Status telemetry
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(
-                            text = buildAnnotatedString {
-                                withStyle(SpanStyle(color = TextPrimary, fontWeight = FontWeight.Bold)) {
-                                    append("Launcher ")
-                                }
-                                withStyle(SpanStyle(color = palette.accent, fontWeight = FontWeight.Bold)) {
-                                    append("Game")
-                                }
-                            },
-                            style = MaterialTheme.typography.headlineMedium.copy(
-                                fontFamily = RajdhaniFontFamily,
-                                fontSize = if (isWide) 26.sp else 22.sp
-                            )
+                        TurboXLogoMark(
+                            accentColor = palette.accent,
+                            modifier = Modifier.size(38.dp)
                         )
+                        Column {
+                            Text(
+                                text = buildAnnotatedString {
+                                    withStyle(SpanStyle(color = TextPrimary, fontWeight = FontWeight.Bold)) {
+                                        append("TURBO ")
+                                    }
+                                    withStyle(SpanStyle(color = palette.accent, fontWeight = FontWeight.Bold)) {
+                                        append("X")
+                                    }
+                                },
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontFamily = RajdhaniFontFamily,
+                                    fontSize = if (isWide) 25.sp else 22.sp,
+                                    letterSpacing = 1.4.sp
+                                )
+                            )
+                            Text(
+                                text = "PRECISION ENGINE",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = RajdhaniFontFamily,
+                                    fontSize = 10.sp,
+                                    letterSpacing = 1.6.sp
+                                ),
+                                color = TextMuted
+                            )
+                        }
 
                         if (isWide) {
+                            Spacer(modifier = Modifier.width(6.dp))
                             HeaderStatusCluster(
                                 clock = currentClock,
                                 telemetry = telemetry,
@@ -256,9 +313,9 @@ fun LauncherHomeScreen(
                         }
                     }
 
-                    // Top Right Circular Action Pills
+                    // Top Right Circular Glass Action Buttons
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         HeaderCircleButton(
@@ -310,73 +367,136 @@ fun LauncherHomeScreen(
                     }
                 }
 
-                // MAIN BODY AREA
+                // MAIN ANIMATED BODY AREA
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
-                    if (selectedBottomTab == 0) {
-                        // LOBBY TAB
-                        if (isWide) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Left Game Dock
+                    AnimatedContent(
+                        targetState = selectedBottomTab,
+                        transitionSpec = {
+                            val dir = if (targetState > initialState) 1 else -1
+                            (slideInHorizontally(
+                                animationSpec = tween(260, easing = FastOutSlowInEasing),
+                                initialOffsetX = { dir * (it / 5) }
+                            ) + fadeIn(tween(220))) togetherWith
+                                (slideOutHorizontally(
+                                    animationSpec = tween(200, easing = FastOutSlowInEasing),
+                                    targetOffsetX = { -dir * (it / 6) }
+                                ) + fadeOut(tween(180)))
+                        },
+                        label = "main_tab_transition"
+                    ) { tabIndex ->
+                        if (tabIndex == 0) {
+                            // COCKPIT TAB
+                            if (isWide) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    // Left Game Dock
+                                    Column(
+                                        modifier = Modifier
+                                            .width(248.dp)
+                                            .fillMaxHeight(),
+                                        verticalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        GameDockList(
+                                            games = addedGames,
+                                            selectedPackage = selectedGame?.packageName,
+                                            accentColor = palette.accent,
+                                            getAppIcon = getAppIcon,
+                                            onSelectGame = onSelectGame,
+                                            onAddGames = onNavigateAddApps,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        AddGameSquareButton(
+                                            label = "Add Games",
+                                            onClick = onNavigateAddApps,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+
+                                    // Center Reactor Dial + Right Action Deck
+                                    Row(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            TurboCockpitReactor(
+                                                glowColor = modeGlowColor,
+                                                secondaryColor = palette.secondaryGlow,
+                                                actualFps = telemetry.actualFps,
+                                                cpuFreqMHz = telemetry.cpuFreqMHz,
+                                                ramUsedPercent = telemetry.ramUsedPercent,
+                                                modeLabel = settings.cpuMode.label,
+                                                gameIcon = selectedGameIcon,
+                                                animatePulse = settings.homeAnimation,
+                                                modifier = Modifier.size(224.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            SelectedGamePill(
+                                                game = selectedGame,
+                                                cpuModeLabel = settings.cpuMode.label,
+                                                targetHz = maxOf(settings.frameRateTarget, settings.fpsGameTarget),
+                                                accentColor = modeGlowColor
+                                            )
+                                        }
+
+                                        StartPlayButtonCluster(
+                                            accentColor = palette.accent,
+                                            accentDeep = palette.accentDeep,
+                                            remainingTurboSeconds = remainingTurboSeconds,
+                                            onStartPlay = onStartPlay,
+                                            onQuickPanel = onOpenOverlayPreview
+                                        )
+                                    }
+                                }
+                            } else {
+                                // Portrait Adaptive Cockpit
                                 Column(
                                     modifier = Modifier
-                                        .width(235.dp)
-                                        .fillMaxHeight(),
+                                        .fillMaxSize()
+                                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    GameDockList(
-                                        games = addedGames,
-                                        selectedPackage = selectedGame?.packageName,
-                                        accentColor = palette.accent,
-                                        getAppIcon = getAppIcon,
-                                        onSelectGame = onSelectGame,
-                                        onAddGames = onNavigateAddApps,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    AddGameSquareButton(onClick = onNavigateAddApps)
-                                }
-
-                                // Center Metallic X Hero + Right Start Play
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    TurboXEmblem(
-                                        glowColor = modeGlowColor,
-                                        animatePulse = settings.homeAnimation,
-                                        modifier = Modifier.size(240.dp)
-                                    )
-
+                                    // Telemetry Reactor Core
                                     Column(
-                                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
                                     ) {
-                                        Text(
-                                            text = selectedGame?.appName ?: "Tap + to Add Your Games",
-                                            style = MaterialTheme.typography.headlineMedium.copy(
-                                                fontFamily = RajdhaniFontFamily,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 26.sp
-                                            ),
-                                            color = TextPrimary.copy(alpha = 0.88f),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                        TurboCockpitReactor(
+                                            glowColor = modeGlowColor,
+                                            secondaryColor = palette.secondaryGlow,
+                                            actualFps = telemetry.actualFps,
+                                            cpuFreqMHz = telemetry.cpuFreqMHz,
+                                            ramUsedPercent = telemetry.ramUsedPercent,
+                                            modeLabel = settings.cpuMode.label,
+                                            gameIcon = selectedGameIcon,
+                                            animatePulse = settings.homeAnimation,
+                                            modifier = Modifier.size(204.dp)
                                         )
-                                        Text(
-                                            text = "${settings.cpuMode.label}  •  ${telemetry.cpuFreqMHz} MHz  •  RAM ${telemetry.ramUsedPercent}%",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = TextSecondary
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        SelectedGamePill(
+                                            game = selectedGame,
+                                            cpuModeLabel = settings.cpuMode.label,
+                                            targetHz = maxOf(settings.frameRateTarget, settings.fpsGameTarget),
+                                            accentColor = modeGlowColor
                                         )
                                     }
 
@@ -385,171 +505,155 @@ fun LauncherHomeScreen(
                                         accentDeep = palette.accentDeep,
                                         remainingTurboSeconds = remainingTurboSeconds,
                                         onStartPlay = onStartPlay,
-                                        onQuickPanel = onOpenOverlayPreview,
-                                        modifier = Modifier
-                                            .align(Alignment.CenterEnd)
-                                            .padding(end = 12.dp)
+                                        onQuickPanel = onOpenOverlayPreview
                                     )
-                                }
-                            }
-                        } else {
-                            // Portrait Adaptive Lobby
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                // Hero X + Selected Game
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxWidth(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    TurboXEmblem(
-                                        glowColor = modeGlowColor,
-                                        animatePulse = settings.homeAnimation,
-                                        modifier = Modifier.size(210.dp)
-                                    )
-                                    Column(
-                                        modifier = Modifier.align(Alignment.BottomCenter),
-                                        horizontalAlignment = Alignment.CenterHorizontally
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Horizontal Game Shelf
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        Text(
-                                            text = selectedGame?.appName ?: "No Games Added Yet",
-                                            style = MaterialTheme.typography.headlineMedium.copy(
-                                                fontFamily = RajdhaniFontFamily,
-                                                fontSize = 24.sp
-                                            ),
-                                            color = TextPrimary,
-                                            textAlign = TextAlign.Center,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "${settings.cpuMode.label} • ${telemetry.cpuFreqMHz} MHz • ${telemetry.ramUsedPercent}% RAM",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = TextSecondary
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                StartPlayButtonCluster(
-                                    accentColor = palette.accent,
-                                    accentDeep = palette.accentDeep,
-                                    remainingTurboSeconds = remainingTurboSeconds,
-                                    onStartPlay = onStartPlay,
-                                    onQuickPanel = onOpenOverlayPreview
-                                )
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                // Horizontal Game Dock Strip
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    AddGameSquareButton(onClick = onNavigateAddApps)
-                                    if (addedGames.isEmpty()) {
-                                        Text(
-                                            text = "Add games from your installed apps",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = TextMuted
-                                        )
-                                    } else {
-                                        LazyRow(
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                            flingBehavior = rememberTurboFlingBehavior(),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            items(addedGames, key = { it.packageName }) { game ->
-                                                PortraitGameChip(
-                                                    game = game,
-                                                    selected = game.packageName == selectedGame?.packageName,
-                                                    accentColor = palette.accent,
-                                                    icon = getAppIcon(game.packageName),
-                                                    onClick = { onSelectGame(game.packageName) }
+                                        AddGameSquareButton(onClick = onNavigateAddApps)
+                                        if (addedGames.isEmpty()) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(48.dp)
+                                                    .clip(RoundedCornerShape(14.dp))
+                                                    .background(CyberSlate.copy(alpha = 0.65f))
+                                                    .border(1.dp, CyberBorder.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+                                                    .clickable { onNavigateAddApps() }
+                                                    .padding(horizontal = 14.dp),
+                                                contentAlignment = Alignment.CenterStart
+                                            ) {
+                                                Text(
+                                                    text = "Tap + to add games to Turbo X",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = TextSecondary
                                                 )
+                                            }
+                                        } else {
+                                            LazyRow(
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                flingBehavior = rememberTurboFlingBehavior(),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                items(addedGames, key = { it.packageName }) { game ->
+                                                    PortraitGameChip(
+                                                        game = game,
+                                                        selected = game.packageName == selectedGame?.packageName,
+                                                        accentColor = palette.accent,
+                                                        icon = getAppIcon(game.packageName),
+                                                        onClick = { onSelectGame(game.packageName) }
+                                                    )
+                                                }
                                             }
                                         }
                                     }
+                                    Spacer(modifier = Modifier.height(6.dp))
                                 }
                             }
+                        } else {
+                            // TELEMETRY TAB
+                            TelemetryPageContent(
+                                settings = settings,
+                                telemetry = telemetry,
+                                sessionHistory = sessionHistory,
+                                remainingTurboSeconds = remainingTurboSeconds,
+                                isOverlayRunning = isOverlayServiceRunning,
+                                onAddTurboTime = onAddTurboTimeClick,
+                                onBoostRam = onBoostRam,
+                                onRunPingTest = onRunPingTest,
+                                onToggleOverlayService = onToggleOverlayService
+                            )
                         }
-                    } else {
-                        // DATABASE PAGE TAB — Live Hardware & Session Telemetry
-                        DataBasePageContent(
-                            settings = settings,
-                            telemetry = telemetry,
-                            sessionHistory = sessionHistory,
-                            remainingTurboSeconds = remainingTurboSeconds,
-                            isOverlayRunning = isOverlayServiceRunning,
-                            onAddTurboTime = onAddTurboTimeClick,
-                            onBoostRam = onBoostRam,
-                            onRunPingTest = onRunPingTest,
-                            onToggleOverlayService = onToggleOverlayService
-                        )
                     }
 
-                    // Floating Toast Status Banner
+                    // Smooth Animated Status Banner
                     androidx.compose.animation.AnimatedVisibility(
                         visible = statusMessage != null,
-                        enter = fadeIn(),
-                        exit = fadeOut(),
+                        enter = slideInVertically(
+                            initialOffsetY = { -it },
+                            animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow)
+                        ) + fadeIn(tween(180)),
+                        exit = slideOutVertically(
+                            targetOffsetY = { -it },
+                            animationSpec = tween(160)
+                        ) + fadeOut(tween(150)),
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .padding(top = 6.dp)
+                            .padding(top = 6.dp, start = 16.dp, end = 16.dp)
                     ) {
                         if (statusMessage != null) {
                             Surface(
                                 color = CyberElevated.copy(alpha = 0.96f),
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier.border(1.dp, palette.accent, RoundedCornerShape(14.dp))
+                                shape = RoundedCornerShape(16.dp),
+                                shadowElevation = 8.dp,
+                                modifier = Modifier.border(1.dp, palette.accent.copy(alpha = 0.85f), RoundedCornerShape(16.dp))
                             ) {
                                 Text(
                                     text = statusMessage,
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = TextPrimary,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
                                 )
                             }
                         }
                     }
                 }
 
-                // REAL ADMOB BANNER AD
-                AdMobBannerBar(
+                // ORIGINAL FLOATING PILL NAVIGATION BAR
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 2.dp)
-                )
-
-                // BOTTOM SLANTED TABS: Lobby | DataBase Page
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.Center
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    SlantedBottomTab(
-                        title = "Lobby",
-                        selected = selectedBottomTab == 0,
-                        accentColor = palette.accent,
-                        onClick = { selectedBottomTab = 0 },
-                        testTag = "tab_lobby"
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    SlantedBottomTab(
-                        title = "DataBase Page",
-                        selected = selectedBottomTab == 1,
-                        accentColor = palette.accent,
-                        onClick = { selectedBottomTab = 1 },
-                        testTag = "tab_database"
+                    Row(
+                        modifier = Modifier
+                            .widthIn(max = 420.dp)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(MidnightSurface.copy(alpha = 0.94f))
+                            .border(1.dp, CyberBorder.copy(alpha = 0.8f), RoundedCornerShape(24.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        CockpitNavPill(
+                            title = "Cockpit",
+                            icon = Icons.Rounded.Dashboard,
+                            selected = selectedBottomTab == 0,
+                            accentColor = palette.accent,
+                            onClick = { selectedBottomTab = 0 },
+                            testTag = "tab_lobby",
+                            modifier = Modifier.weight(1f)
+                        )
+                        CockpitNavPill(
+                            title = "Telemetry",
+                            icon = Icons.Rounded.Analytics,
+                            selected = selectedBottomTab == 1,
+                            accentColor = palette.accent,
+                            onClick = { selectedBottomTab = 1 },
+                            testTag = "tab_database",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                // DEDICATED BOTTOM-ANCHORED BANNER AD DOCK (Clean separation prevents mis-taps)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AdMobBannerBar(
+                        modifier = Modifier
+                            .widthIn(max = 520.dp)
+                            .fillMaxWidth()
                     )
                 }
             }
@@ -575,6 +679,40 @@ fun LauncherHomeScreen(
 }
 
 @Composable
+private fun SelectedGamePill(
+    game: InstalledAppInfo?,
+    cpuModeLabel: String,
+    targetHz: Int,
+    accentColor: Color
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(MidnightSurface.copy(alpha = 0.78f))
+            .border(1.dp, CyberBorder.copy(alpha = 0.65f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = game?.appName ?: "Select a Game Below",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontFamily = RajdhaniFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            ),
+            color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = "$cpuModeLabel • ${targetHz}Hz Target",
+            style = MaterialTheme.typography.labelSmall,
+            color = accentColor
+        )
+    }
+}
+
+@Composable
 private fun HeaderStatusCluster(
     clock: String,
     telemetry: HardwareTelemetry,
@@ -583,28 +721,39 @@ private fun HeaderStatusCluster(
     onAddTimeClick: () -> Unit
 ) {
     val hasTime = remainingTurboSeconds > 0L
-    val timeColor = if (hasTime) EmeraldBright else CyberAmber
+    val timeColor by animateColorAsState(
+        targetValue = if (hasTime) EmeraldBright else CyberAmber,
+        animationSpec = tween(250),
+        label = "turbo_time_color"
+    )
     val formattedRemaining = formatCompactTurboClock(remainingTurboSeconds)
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
             text = clock,
             style = MaterialTheme.typography.titleMedium.copy(fontFamily = RajdhaniFontFamily),
             color = TextSecondary
         )
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(CyberSlate.copy(alpha = 0.7f))
+                .padding(horizontal = 7.dp, vertical = 3.dp)
+        ) {
             Icon(
                 imageVector = if (telemetry.isCharging) Icons.Rounded.BatteryChargingFull else Icons.Rounded.BatteryStd,
                 contentDescription = "Battery level",
                 tint = EmeraldActive,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(14.dp)
             )
             Text(
                 text = "${telemetry.batteryPercent}%",
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.labelSmall,
                 color = TextSecondary
             )
         }
@@ -617,11 +766,11 @@ private fun HeaderStatusCluster(
                 .background(if (hasTime) EmeraldActive.copy(alpha = 0.14f) else accentColor.copy(alpha = 0.14f))
                 .border(
                     1.dp,
-                    if (hasTime) EmeraldActive.copy(alpha = 0.5f) else CyberAmber.copy(alpha = 0.5f),
+                    if (hasTime) EmeraldActive.copy(alpha = 0.55f) else CyberAmber.copy(alpha = 0.55f),
                     RoundedCornerShape(10.dp)
                 )
                 .clickable { onAddTimeClick() }
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .padding(horizontal = 9.dp, vertical = 5.dp)
         ) {
             Icon(
                 imageVector = Icons.Rounded.Bolt,
@@ -648,7 +797,7 @@ private fun HeaderStatusCluster(
         ) {
             Box(
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(30.dp)
                     .clip(CircleShape)
                     .background(CyberElevated)
                     .border(1.dp, if (hasTime) CyberBorder else CyberAmber, CircleShape),
@@ -673,14 +822,23 @@ private fun HeaderCircleButton(
     onClick: () -> Unit,
     testTag: String
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.90f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
+        label = "header_btn_scale"
+    )
+
     Box(
         modifier = Modifier
+            .scale(scale)
             .testTag(testTag)
-            .size(40.dp)
+            .size(44.dp)
             .clip(CircleShape)
-            .background(CyberSlate)
-            .border(1.dp, CyberBorder, CircleShape)
-            .clickable { onClick() },
+            .background(CyberSlate.copy(alpha = 0.9f))
+            .border(1.dp, CyberBorder.copy(alpha = 0.9f), CircleShape)
+            .clickable(interactionSource = interactionSource, indication = null) { onClick() },
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, contentDescription = description, tint = TextPrimary, modifier = Modifier.size(20.dp))
@@ -688,7 +846,7 @@ private fun HeaderCircleButton(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(6.dp)
+                    .padding(7.dp)
                     .size(7.dp)
                     .clip(CircleShape)
                     .background(badgeDotColor)
@@ -711,9 +869,9 @@ private fun GameDockList(
         Box(
             modifier = modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(MidnightSurface.copy(alpha = 0.85f))
-                .border(1.dp, CyberBorder, RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(MidnightSurface.copy(alpha = 0.88f))
+                .border(1.dp, CyberBorder, RoundedCornerShape(16.dp))
                 .clickable { onAddGames() }
                 .padding(16.dp),
             contentAlignment = Alignment.Center
@@ -721,14 +879,10 @@ private fun GameDockList(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Rounded.SportsEsports, contentDescription = null, tint = accentColor, modifier = Modifier.size(34.dp))
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "No games added",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary
-                )
+                Text("No games added", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Tap '+' below to add installed games",
+                    text = "Tap below to add installed games",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextMuted,
                     textAlign = TextAlign.Center
@@ -745,18 +899,23 @@ private fun GameDockList(
             items(games, key = { it.packageName }) { game ->
                 val isSelected = game.packageName == selectedPackage
                 val iconBitmap = remember(game.packageName) { getAppIcon(game.packageName) }
+                val bgColor by animateColorAsState(
+                    targetValue = if (isSelected) accentColor.copy(alpha = 0.16f) else MidnightSurface.copy(alpha = 0.78f),
+                    animationSpec = tween(200),
+                    label = "dock_bg"
+                )
+                val borderColor by animateColorAsState(
+                    targetValue = if (isSelected) accentColor else CyberBorder.copy(alpha = 0.55f),
+                    animationSpec = tween(200),
+                    label = "dock_border"
+                )
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (isSelected) accentColor.copy(alpha = 0.14f) else MidnightSurface.copy(alpha = 0.72f)
-                        )
-                        .border(
-                            width = if (isSelected) 1.5.dp else 1.dp,
-                            color = if (isSelected) accentColor else CyberBorder.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(bgColor)
+                        .border(if (isSelected) 1.5.dp else 1.dp, borderColor, RoundedCornerShape(14.dp))
                         .clickable { onSelectGame(game.packageName) }
                         .padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -783,16 +942,16 @@ private fun GameDockList(
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Version ${game.versionName}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted,
+                            text = game.appName,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = game.appName,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = TextPrimary,
+                            text = "v${game.versionName}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -811,13 +970,31 @@ private fun PortraitGameChip(
     icon: ImageBitmap?,
     onClick: () -> Unit
 ) {
+    val bgColor by animateColorAsState(
+        targetValue = if (selected) accentColor.copy(alpha = 0.22f) else CyberSlate.copy(alpha = 0.9f),
+        animationSpec = tween(200),
+        label = "chip_bg"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) accentColor else CyberBorder,
+        animationSpec = tween(200),
+        label = "chip_border"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.03f else 1f,
+        animationSpec = spring(dampingRatio = 0.7f),
+        label = "chip_scale"
+    )
+
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) accentColor.copy(alpha = 0.2f) else CyberSlate)
-            .border(1.dp, if (selected) accentColor else CyberBorder, RoundedCornerShape(12.dp))
+            .scale(scale)
+            .height(48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(bgColor)
+            .border(if (selected) 1.4.dp else 1.dp, borderColor, RoundedCornerShape(14.dp))
             .clickable { onClick() }
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -826,13 +1003,15 @@ private fun PortraitGameChip(
                 bitmap = icon,
                 contentDescription = game.appName,
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(30.dp)
                     .clip(RoundedCornerShape(8.dp))
             )
         }
         Text(
             text = game.appName,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            ),
             color = TextPrimary,
             maxLines = 1
         )
@@ -840,18 +1019,29 @@ private fun PortraitGameChip(
 }
 
 @Composable
-private fun AddGameSquareButton(onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
+private fun AddGameSquareButton(
+    label: String? = null,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
             .testTag("add_games_button")
-            .size(48.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(CyberSlate)
-            .border(1.dp, CyberBorder, RoundedCornerShape(10.dp))
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center
+            .height(48.dp)
+            .then(if (label == null) Modifier.width(48.dp) else Modifier)
+            .clip(RoundedCornerShape(14.dp))
+            .background(CyberElevated)
+            .border(1.dp, CyberBorder, RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+            .padding(horizontal = if (label == null) 0.dp else 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
     ) {
         Icon(Icons.Rounded.Add, contentDescription = "Add Apps", tint = TextPrimary, modifier = Modifier.size(22.dp))
+        if (label != null) {
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, color = TextPrimary)
+        }
     }
 }
 
@@ -865,23 +1055,32 @@ private fun StartPlayButtonCluster(
     modifier: Modifier = Modifier
 ) {
     val hasTime = remainingTurboSeconds > 0L
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val buttonScale by animateFloatAsState(
+        targetValue = if (pressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
+        label = "launch_btn_scale"
+    )
+
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Box(
                 modifier = Modifier
+                    .scale(buttonScale)
                     .testTag("start_play_button")
-                    .height(48.dp)
-                    .width(168.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .height(52.dp)
+                    .width(200.dp)
+                    .clip(RoundedCornerShape(16.dp))
                     .background(
-                        Brush.verticalGradient(
+                        Brush.horizontalGradient(
                             colors = if (hasTime) {
                                 listOf(accentColor, accentDeep)
                             } else {
@@ -890,31 +1089,30 @@ private fun StartPlayButtonCluster(
                         )
                     )
                     .border(
-                        1.dp,
-                        if (hasTime) accentColor.copy(alpha = 0.85f) else CyberAmber.copy(alpha = 0.75f),
-                        RoundedCornerShape(8.dp)
+                        1.2.dp,
+                        if (hasTime) accentColor.copy(alpha = 0.9f) else CyberAmber.copy(alpha = 0.8f),
+                        RoundedCornerShape(16.dp)
                     )
-                    .clickable { onStartPlay() },
+                    .clickable(interactionSource = interactionSource, indication = null) { onStartPlay() },
                 contentAlignment = Alignment.Center
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (!hasTime) {
-                        Icon(
-                            imageVector = Icons.Rounded.Bolt,
-                            contentDescription = null,
-                            tint = CyberAmber,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = if (hasTime) Icons.Rounded.PlayArrow else Icons.Rounded.Bolt,
+                        contentDescription = null,
+                        tint = if (hasTime) Color.White else CyberAmber,
+                        modifier = Modifier.size(22.dp)
+                    )
                     Text(
-                        text = if (hasTime) "Start Play" else "Watch Ad to Play",
+                        text = if (hasTime) "LAUNCH TURBO" else "UNLOCK +1H PLAY",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontFamily = RajdhaniFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 17.sp
+                            fontSize = 17.sp,
+                            letterSpacing = 1.sp
                         ),
                         color = if (hasTime) Color.White else CyberAmber
                     )
@@ -924,26 +1122,26 @@ private fun StartPlayButtonCluster(
             Box(
                 modifier = Modifier
                     .testTag("quick_panel_arrow_btn")
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(ObsidianVoid.copy(alpha = 0.9f))
-                    .border(1.5.dp, accentColor, RoundedCornerShape(10.dp))
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MidnightSurface.copy(alpha = 0.92f))
+                    .border(1.2.dp, accentColor.copy(alpha = 0.7f), RoundedCornerShape(16.dp))
                     .clickable { onQuickPanel() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    imageVector = Icons.Rounded.Tune,
                     contentDescription = "Open Game Panel",
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
+                    tint = TextPrimary,
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
         Text(
             text = if (hasTime) {
-                "Turbo Time Active • ${formatCompactTurboClock(remainingTurboSeconds)}"
+                "Turbo Active • ${formatCompactTurboClock(remainingTurboSeconds)} remaining"
             } else {
-                "0:00:00 left • Watch 1 Ad for +1h:00m"
+                "Timer 0:00:00 • Watch 1 short Ad for +1h:00m"
             },
             style = MaterialTheme.typography.labelSmall,
             color = if (hasTime) EmeraldBright else CyberAmber
@@ -952,47 +1150,63 @@ private fun StartPlayButtonCluster(
 }
 
 @Composable
-private fun SlantedBottomTab(
+private fun CockpitNavPill(
     title: String,
+    icon: ImageVector,
     selected: Boolean,
     accentColor: Color,
     onClick: () -> Unit,
-    testTag: String
+    testTag: String,
+    modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = Modifier
+    val bgColor by animateColorAsState(
+        targetValue = if (selected) accentColor.copy(alpha = 0.22f) else Color.Transparent,
+        animationSpec = tween(220),
+        label = "nav_pill_bg"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) accentColor.copy(alpha = 0.75f) else Color.Transparent,
+        animationSpec = tween(220),
+        label = "nav_pill_border"
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) TextPrimary else TextSecondary,
+        animationSpec = tween(200),
+        label = "nav_pill_text"
+    )
+
+    Row(
+        modifier = modifier
             .testTag(testTag)
-            .width(172.dp)
-            .height(38.dp)
-            .clip(SlantedTabShape)
-            .background(
-                if (selected) {
-                    Brush.verticalGradient(listOf(accentColor.copy(alpha = 0.35f), MidnightSurface))
-                } else {
-                    Brush.verticalGradient(listOf(CyberSlate.copy(alpha = 0.7f), MidnightSurface))
-                }
-            )
-            .border(
-                width = if (selected) 1.5.dp else 1.dp,
-                color = if (selected) accentColor else CyberBorder,
-                shape = SlantedTabShape
-            )
+            .height(44.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(bgColor)
+            .border(1.dp, borderColor, RoundedCornerShape(20.dp))
             .clickable { onClick() },
-        contentAlignment = Alignment.Center
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (selected) accentColor else TextSecondary,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium.copy(
                 fontFamily = RajdhaniFontFamily,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                fontSize = 15.sp
             ),
-            color = if (selected) TextPrimary else TextSecondary
+            color = contentColor
         )
     }
 }
 
 @Composable
-private fun DataBasePageContent(
+private fun TelemetryPageContent(
     settings: GameTurboSettings,
     telemetry: HardwareTelemetry,
     sessionHistory: List<GameSessionRecord>,
@@ -1011,7 +1225,6 @@ private fun DataBasePageContent(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Top 3 Hardware Telemetry Cards
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1033,7 +1246,7 @@ private fun DataBasePageContent(
                 modifier = Modifier.weight(1f)
             )
             TelemetrySummaryCard(
-                title = "Thermal & Network",
+                title = "Thermal & Net",
                 value = "${telemetry.batteryTempCelsius}°C",
                 subtitle = "${telemetry.displayRefreshRateHz}Hz • ${telemetry.networkType}" +
                     (telemetry.wifiLinkMbps?.let { " ${it}Mbps" } ?: ""),
@@ -1043,19 +1256,23 @@ private fun DataBasePageContent(
             )
         }
 
-        // Per-Core CPU Frequency Bars
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(MidnightSurface)
-                .border(1.dp, CyberBorder, RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(MidnightSurface.copy(alpha = 0.92f))
+                .border(1.dp, CyberBorder, RoundedCornerShape(16.dp))
                 .padding(14.dp)
         ) {
             Text("CPU Core Frequencies", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
             Spacer(modifier = Modifier.height(8.dp))
             val maxFreq = (telemetry.cpuCoreFreqsMHz.maxOrNull() ?: 2400).coerceAtLeast(1800)
             telemetry.cpuCoreFreqsMHz.forEachIndexed { idx, freq ->
+                val animatedRatio by animateFloatAsState(
+                    targetValue = (freq.toFloat() / maxFreq.toFloat()).coerceIn(0.1f, 1f),
+                    animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
+                    label = "core_bar_$idx"
+                )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1070,7 +1287,7 @@ private fun DataBasePageContent(
                         modifier = Modifier.width(46.dp)
                     )
                     LinearProgressIndicator(
-                        progress = { (freq.toFloat() / maxFreq.toFloat()).coerceIn(0.1f, 1f) },
+                        progress = { animatedRatio },
                         color = palette.accent,
                         trackColor = CyberElevated,
                         modifier = Modifier
@@ -1089,13 +1306,16 @@ private fun DataBasePageContent(
             }
         }
 
-        // Turbo Time Credit Banner
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(MidnightSurface)
-                .border(1.dp, if (remainingTurboSeconds > 0L) EmeraldActive.copy(alpha = 0.6f) else CyberAmber.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(MidnightSurface.copy(alpha = 0.92f))
+                .border(
+                    1.dp,
+                    if (remainingTurboSeconds > 0L) EmeraldActive.copy(alpha = 0.6f) else CyberAmber.copy(alpha = 0.6f),
+                    RoundedCornerShape(16.dp)
+                )
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -1111,6 +1331,7 @@ private fun DataBasePageContent(
             Button(
                 onClick = onAddTurboTime,
                 colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.height(48.dp)
             ) {
                 Icon(Icons.Rounded.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -1119,7 +1340,6 @@ private fun DataBasePageContent(
             }
         }
 
-        // Quick Utility Actions Row
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1127,46 +1347,54 @@ private fun DataBasePageContent(
             Button(
                 onClick = onBoostRam,
                 colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
-                modifier = Modifier.weight(1f)
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
             ) {
                 Icon(Icons.Rounded.RocketLaunch, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Boost RAM (${settings.totalBoostCount})")
+                Text("Boost (${settings.totalBoostCount})")
             }
             Button(
                 onClick = onRunPingTest,
                 colors = ButtonDefaults.buttonColors(containerColor = CyberElevated),
-                modifier = Modifier.weight(1f)
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
             ) {
                 Icon(Icons.Rounded.NetworkCheck, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(telemetry.pingMs?.let { "Ping: ${it}ms" } ?: "Test Ping")
+                Text(telemetry.pingMs?.let { "${it}ms" } ?: "Ping")
             }
             Button(
                 onClick = onToggleOverlayService,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isOverlayRunning) EmeraldActive else CyberElevated
                 ),
-                modifier = Modifier.weight(1f)
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
             ) {
-                Text(if (isOverlayRunning) "Overlay ON" else "Start Overlay")
+                Text(if (isOverlayRunning) "HUD ON" else "HUD OFF")
             }
         }
 
-        // Session History
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(MidnightSurface)
-                .border(1.dp, CyberBorder, RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(MidnightSurface.copy(alpha = 0.92f))
+                .border(1.dp, CyberBorder, RoundedCornerShape(16.dp))
                 .padding(14.dp)
         ) {
             Text("Recent Launch Sessions", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
             Spacer(modifier = Modifier.height(6.dp))
             if (sessionHistory.isEmpty()) {
                 Text(
-                    text = "No game sessions recorded yet. Select a game in Lobby and tap Start Play.",
+                    text = "No game sessions recorded yet. Select a game in Cockpit and tap LAUNCH TURBO.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextMuted
                 )
@@ -1202,20 +1430,21 @@ private fun TelemetrySummaryCard(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(MidnightSurface)
-            .border(1.dp, CyberBorder, RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .background(MidnightSurface.copy(alpha = 0.92f))
+            .border(1.dp, CyberBorder, RoundedCornerShape(16.dp))
             .padding(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
-            Text(title, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+            Text(title, style = MaterialTheme.typography.labelSmall, color = TextSecondary, maxLines = 1)
         }
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.headlineMedium.copy(fontFamily = RajdhaniFontFamily),
-            color = TextPrimary
+            color = TextPrimary,
+            maxLines = 1
         )
         Text(
             text = subtitle,
@@ -1237,9 +1466,9 @@ private fun WallpaperThemeDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(20.dp))
                 .background(MidnightSurface)
-                .border(1.dp, CyberBorder, RoundedCornerShape(18.dp))
+                .border(1.dp, CyberBorder, RoundedCornerShape(20.dp))
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -1248,12 +1477,14 @@ private fun WallpaperThemeDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Launcher Theme & Wallpaper", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
+                Text("Cockpit Theme & Wallpaper", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
                 Icon(
                     Icons.Rounded.Close,
                     contentDescription = "Close",
                     tint = TextSecondary,
-                    modifier = Modifier.clickable { onDismiss() }
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clickable { onDismiss() }
                 )
             }
             WallpaperTheme.entries.forEach { theme ->
@@ -1261,11 +1492,11 @@ private fun WallpaperThemeDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .background(if (selected) CyberElevated else CyberSlate)
-                        .border(1.dp, if (selected) LocalTurboAccent.current.accent else CyberBorder, RoundedCornerShape(12.dp))
+                        .border(1.dp, if (selected) LocalTurboAccent.current.accent else CyberBorder, RoundedCornerShape(14.dp))
                         .clickable { onSelectTheme(theme) }
-                        .padding(12.dp),
+                        .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {

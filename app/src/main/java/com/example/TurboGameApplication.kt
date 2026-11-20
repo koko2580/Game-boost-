@@ -18,6 +18,7 @@ class TurboGameApplication :
         private set
 
     private var currentMainActivity: Activity? = null
+    private var wentToBackground: Boolean = false
 
     override fun onCreate() {
         super<Application>.onCreate()
@@ -25,14 +26,21 @@ class TurboGameApplication :
         if (!isRobolectricEnvironment()) {
             registerActivityLifecycleCallbacks(this)
             ProcessLifecycleOwner.get().lifecycle.addObserver(this)
-            adMobManager.initialize { currentMainActivity }
+            adMobManager.initialize()
         }
     }
 
     override fun onStart(owner: LifecycleOwner) {
         super<DefaultLifecycleObserver>.onStart(owner)
+        if (!wentToBackground) return
+        wentToBackground = false
         val activity = currentMainActivity ?: return
         adMobManager.showAppOpenAdIfAvailable(activity)
+    }
+
+    override fun onStop(owner: LifecycleOwner) {
+        super<DefaultLifecycleObserver>.onStop(owner)
+        wentToBackground = true
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {

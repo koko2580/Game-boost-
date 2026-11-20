@@ -1,14 +1,19 @@
 package com.example.ui.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,8 +22,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -27,9 +35,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -41,14 +53,17 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,22 +71,20 @@ import com.example.data.CpuMode
 import com.example.data.CrosshairStyle
 import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.CyberBorder
+import com.example.ui.theme.CyberElevated
 import com.example.ui.theme.CyberSlate
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldBright
 import com.example.ui.theme.LocalTurboAccent
+import com.example.ui.theme.MidnightSurface
+import com.example.ui.theme.ObsidianVoid
 import com.example.ui.theme.RajdhaniFontFamily
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
-
-val SlantedTabShape = GenericShape { size, _ ->
-    val slant = size.height * 0.65f
-    moveTo(slant, 0f)
-    lineTo(size.width - slant, 0f)
-    lineTo(size.width, size.height)
-    lineTo(0f, size.height)
-    close()
-}
+import com.example.ui.theme.TextSecondary
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 val HexBadgeShape = GenericShape { size, _ ->
     val cut = size.height * 0.28f
@@ -90,47 +103,149 @@ fun cpuModeColor(mode: CpuMode, defaultAccent: Color): Color = when (mode) {
     CpuMode.ACCELERATION -> defaultAccent
 }
 
+/**
+ * Original Turbo X vector emblem — twin turbine chevrons inside a stealth hex-core.
+ */
 @Composable
-fun TurboTopLogoCorner(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .width(96.dp)
-            .height(50.dp)
-            .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(Color(0xFF212638), Color(0xFF141824))
-                ),
-                shape = RoundedCornerShape(bottomEnd = 22.dp)
+fun TurboXLogoMark(
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h / 2f
+
+        // Outer subtle hex-shield stroke
+        val shield = Path().apply {
+            moveTo(cx, h * 0.06f)
+            lineTo(w * 0.90f, h * 0.28f)
+            lineTo(w * 0.90f, h * 0.72f)
+            lineTo(cx, h * 0.94f)
+            lineTo(w * 0.10f, h * 0.72f)
+            lineTo(w * 0.10f, h * 0.28f)
+            close()
+        }
+        drawPath(
+            path = shield,
+            brush = Brush.linearGradient(
+                colors = listOf(CyberElevated, MidnightSurface)
             )
-            .border(
-                width = 1.dp,
-                color = Color(0xFF39415A),
-                shape = RoundedCornerShape(bottomEnd = 22.dp)
-            ),
-        contentAlignment = Alignment.Center
+        )
+        drawPath(
+            path = shield,
+            color = accentColor.copy(alpha = 0.7f),
+            style = Stroke(width = (w * 0.055f).coerceAtLeast(1.8f))
+        )
+
+        // Precision dual opposing blades (TX turbine mark)
+        val bladeLeft = Path().apply {
+            moveTo(w * 0.28f, h * 0.30f)
+            lineTo(w * 0.48f, h * 0.50f)
+            lineTo(w * 0.28f, h * 0.70f)
+        }
+        val bladeRight = Path().apply {
+            moveTo(w * 0.72f, h * 0.30f)
+            lineTo(w * 0.52f, h * 0.50f)
+            lineTo(w * 0.72f, h * 0.70f)
+        }
+        val stroke = Stroke(width = (w * 0.10f).coerceAtLeast(2.4f), cap = StrokeCap.Round)
+        drawPath(bladeLeft, color = Color.White, style = stroke)
+        drawPath(bladeRight, color = accentColor, style = stroke)
+    }
+}
+
+/**
+ * Original sleek Material 3 top bar for subscreens (Settings, Permissions, Add Apps).
+ */
+@Composable
+fun TurboXTopBar(
+    title: String,
+    subtitle: String? = null,
+    onBack: () -> Unit,
+    backTestTag: String,
+    trailingContent: @Composable RowScope.() -> Unit = {}
+) {
+    val accent = LocalTurboAccent.current.accent
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MidnightSurface.copy(alpha = 0.96f))
     ) {
-        Canvas(modifier = Modifier.size(34.dp, 20.dp)) {
-            val w = size.width
-            val h = size.height
-            val path = Path().apply {
-                moveTo(w * 0.15f, h * 0.15f)
-                lineTo(w * 0.78f, h * 0.15f)
-                lineTo(w * 0.92f, h * 0.50f)
-                lineTo(w * 0.72f, h * 0.85f)
-                lineTo(w * 0.08f, h * 0.85f)
-                lineTo(w * 0.25f, h * 0.58f)
-                lineTo(w * 0.62f, h * 0.58f)
-                lineTo(w * 0.68f, h * 0.42f)
-                lineTo(w * 0.28f, h * 0.42f)
-                close()
-            }
-            drawPath(
-                path = path,
-                brush = Brush.linearGradient(
-                    colors = listOf(Color(0xFFD6DCEB), Color(0xFF7D869E))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag(backTestTag)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = "Back",
+                        tint = TextPrimary
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                TurboXLogoMark(
+                    accentColor = accent,
+                    modifier = Modifier.size(30.dp)
                 )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontFamily = RajdhaniFontFamily,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!subtitle.isNullOrBlank()) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(end = 8.dp),
+                content = trailingContent
             )
         }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            accent.copy(alpha = 0.45f),
+                            CyberBorder.copy(alpha = 0.6f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
     }
 }
 
@@ -144,160 +259,306 @@ fun CyberToggleSwitch(
     val accent = LocalTurboAccent.current.accent
     val thumbOffset by animateDpAsState(
         targetValue = if (checked) 24.dp else 4.dp,
-        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        animationSpec = spring(
+            dampingRatio = 0.62f,
+            stiffness = Spring.StiffnessMedium
+        ),
         label = "switch_thumb"
+    )
+    val trackColor by animateColorAsState(
+        targetValue = if (checked) accent.copy(alpha = 0.22f) else CyberSlate,
+        animationSpec = tween(durationMillis = 200),
+        label = "switch_track"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (checked) accent.copy(alpha = 0.85f) else CyberBorder,
+        animationSpec = tween(durationMillis = 200),
+        label = "switch_border"
+    )
+    val thumbColor by animateColorAsState(
+        targetValue = if (checked) accent else Color(0xFF8C95AD),
+        animationSpec = tween(durationMillis = 200),
+        label = "switch_dot"
     )
     val interactionSource = remember { MutableInteractionSource() }
 
     Box(
         modifier = modifier
+            .minimumInteractiveComponentSize()
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
-            .size(width = 52.dp, height = 30.dp)
-            .clip(RoundedCornerShape(15.dp))
-            .background(if (checked) Color(0xFF1F2333) else Color(0xFF1E2230))
-            .border(
-                width = 1.dp,
-                color = if (checked) accent.copy(alpha = 0.65f) else CyberBorder,
-                shape = RoundedCornerShape(15.dp)
-            )
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 role = Role.Switch
             ) { onCheckedChange(!checked) },
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .offset(x = thumbOffset)
-                .size(22.dp)
-                .clip(CircleShape)
-                .background(if (checked) accent else Color(0xFF8C92A4))
-        )
+                .size(width = 52.dp, height = 30.dp)
+                .clip(RoundedCornerShape(15.dp))
+                .background(trackColor)
+                .border(
+                    width = 1.2.dp,
+                    color = borderColor,
+                    shape = RoundedCornerShape(15.dp)
+                ),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Box(
+                modifier = Modifier
+                    .offset(x = thumbOffset)
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(thumbColor)
+            )
+        }
     }
 }
 
+/**
+ * Original Turbo X Precision Telemetry Reactor Dial — replaces cloned red X emblem.
+ * Shows live FPS, CPU frequency ratio ring, RAM usage arc, and optional selected game icon.
+ */
 @Composable
-fun TurboXEmblem(
+fun TurboCockpitReactor(
     glowColor: Color,
-    animatePulse: Boolean,
+    secondaryColor: Color = ElectricCyan,
+    actualFps: Int = 60,
+    cpuFreqMHz: Int = 1800,
+    ramUsedPercent: Int = 45,
+    modeLabel: String = "ACCELERATION",
+    gameIcon: ImageBitmap? = null,
+    animatePulse: Boolean = true,
+    centerTitle: String? = null,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "x_emblem_pulse")
-    val pulse by infiniteTransition.animateFloat(
-        initialValue = 0.72f,
+    val animatedGlow by animateColorAsState(
+        targetValue = glowColor,
+        animationSpec = tween(420, easing = FastOutSlowInEasing),
+        label = "reactor_glow"
+    )
+    val animatedCpuProgress by animateFloatAsState(
+        targetValue = (cpuFreqMHz / 3200f).coerceIn(0.18f, 1f),
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow),
+        label = "reactor_cpu_arc"
+    )
+    val animatedRamProgress by animateFloatAsState(
+        targetValue = (ramUsedPercent / 100f).coerceIn(0.1f, 1f),
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow),
+        label = "reactor_ram_arc"
+    )
+
+    val infiniteTransition = rememberInfiniteTransition(label = "cockpit_reactor_loop")
+    val outerOrbitAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 18000, easing = LinearEasing)
+        ),
+        label = "orbit_angle"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.65f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "pulse_alpha"
+        label = "reactor_pulse"
     )
-    val effectivePulse = if (animatePulse) pulse else 0.85f
 
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val cx = w / 2f
-        val cy = h / 2f
-        val arm = minOf(w, h) * 0.42f
+    val effectiveAngle = if (animatePulse) outerOrbitAngle else 0f
+    val effectivePulse = if (animatePulse) pulseAlpha else 0.85f
 
-        // Radial energy flare behind the X
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    glowColor.copy(alpha = 0.55f * effectivePulse),
-                    glowColor.copy(alpha = 0.16f * effectivePulse),
-                    Color.Transparent
-                ),
-                center = Offset(cx, cy),
-                radius = arm * 1.45f
-            ),
-            radius = arm * 1.45f,
-            center = Offset(cx, cy)
-        )
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val cx = w / 2f
+            val cy = h / 2f
+            val radius = minOf(w, h) * 0.45f
 
-        // Diagonal energy rays
-        for (signX in listOf(-1f, 1f)) {
-            for (signY in listOf(-1f, 1f)) {
-                drawLine(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            glowColor.copy(alpha = 0.9f * effectivePulse),
-                            Color.Transparent
-                        ),
-                        start = Offset(cx, cy),
-                        end = Offset(cx + signX * arm * 1.28f, cy + signY * arm * 1.28f)
+            // Deep ambient halo
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        animatedGlow.copy(alpha = 0.28f * effectivePulse),
+                        secondaryColor.copy(alpha = 0.08f * effectivePulse),
+                        Color.Transparent
                     ),
-                    start = Offset(cx, cy),
-                    end = Offset(cx + signX * arm * 1.28f, cy + signY * arm * 1.28f),
-                    strokeWidth = arm * 0.11f,
-                    cap = StrokeCap.Round
+                    center = Offset(cx, cy),
+                    radius = radius * 1.18f
+                ),
+                radius = radius * 1.18f,
+                center = Offset(cx, cy)
+            )
+
+            // Rotating precision tachometer tick ring
+            rotate(degrees = effectiveAngle, pivot = Offset(cx, cy)) {
+                val tickCount = 48
+                val tickOuter = radius * 0.98f
+                val tickInnerMajor = radius * 0.89f
+                val tickInnerMinor = radius * 0.93f
+                for (i in 0 until tickCount) {
+                    val angleRad = (i * (360f / tickCount)) * (PI / 180.0)
+                    val isMajor = i % 4 == 0
+                    val innerR = if (isMajor) tickInnerMajor else tickInnerMinor
+                    val start = Offset(
+                        cx + (innerR * cos(angleRad)).toFloat(),
+                        cy + (innerR * sin(angleRad)).toFloat()
+                    )
+                    val end = Offset(
+                        cx + (tickOuter * cos(angleRad)).toFloat(),
+                        cy + (tickOuter * sin(angleRad)).toFloat()
+                    )
+                    drawLine(
+                        color = if (isMajor) animatedGlow.copy(alpha = 0.72f) else CyberBorder.copy(alpha = 0.75f),
+                        start = start,
+                        end = end,
+                        strokeWidth = if (isMajor) 2.6.dp.toPx() else 1.4.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+
+            // Outer track & CPU Load Sweep Arc (240 deg cockpit gauge)
+            val cpuRadius = radius * 0.80f
+            val cpuTopLeft = Offset(cx - cpuRadius, cy - cpuRadius)
+            val cpuSize = Size(cpuRadius * 2f, cpuRadius * 2f)
+            drawArc(
+                color = CyberSlate,
+                startAngle = 150f,
+                sweepAngle = 240f,
+                useCenter = false,
+                topLeft = cpuTopLeft,
+                size = cpuSize,
+                style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round)
+            )
+            drawArc(
+                brush = Brush.sweepGradient(
+                    colors = listOf(animatedGlow, secondaryColor, animatedGlow),
+                    center = Offset(cx, cy)
+                ),
+                startAngle = 150f,
+                sweepAngle = 240f * animatedCpuProgress,
+                useCenter = false,
+                topLeft = cpuTopLeft,
+                size = cpuSize,
+                style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round)
+            )
+
+            // Inner track & RAM Arc
+            val ramRadius = radius * 0.68f
+            val ramTopLeft = Offset(cx - ramRadius, cy - ramRadius)
+            val ramSize = Size(ramRadius * 2f, ramRadius * 2f)
+            drawArc(
+                color = CyberBorder.copy(alpha = 0.45f),
+                startAngle = 20f,
+                sweepAngle = 140f,
+                useCenter = false,
+                topLeft = ramTopLeft,
+                size = ramSize,
+                style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+            )
+            drawArc(
+                color = secondaryColor.copy(alpha = 0.9f),
+                startAngle = 20f,
+                sweepAngle = 140f * animatedRamProgress,
+                useCenter = false,
+                topLeft = ramTopLeft,
+                size = ramSize,
+                style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+            )
+
+            // Obsidian inner core disc
+            drawCircle(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFF141B2D), Color(0xFF090C14))
+                ),
+                radius = radius * 0.58f,
+                center = Offset(cx, cy)
+            )
+            drawCircle(
+                color = animatedGlow.copy(alpha = 0.45f),
+                radius = radius * 0.58f,
+                center = Offset(cx, cy),
+                style = Stroke(width = 1.5.dp.toPx())
+            )
+        }
+
+        // Center Telemetry Readout
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            if (gameIcon != null && centerTitle == null) {
+                Image(
+                    bitmap = gameIcon,
+                    contentDescription = "Selected Game",
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+            }
+            if (centerTitle != null) {
+                TurboXLogoMark(
+                    accentColor = animatedGlow,
+                    modifier = Modifier.size(44.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = centerTitle,
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        letterSpacing = 1.5.sp
+                    ),
+                    color = animatedGlow
+                )
+            } else {
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "$actualFps",
+                        style = MaterialTheme.typography.displayMedium.copy(
+                            fontFamily = RajdhaniFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 36.sp
+                        ),
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "FPS",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontFamily = RajdhaniFontFamily
+                        ),
+                        color = animatedGlow,
+                        modifier = Modifier.padding(bottom = 5.dp)
+                    )
+                }
+                Text(
+                    text = "$cpuFreqMHz MHz • $ramUsedPercent%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary
+                )
+                Text(
+                    text = modeLabel.uppercase(),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        fontSize = 10.sp
+                    ),
+                    color = animatedGlow
                 )
             }
         }
-
-        // Metallic X silhouette
-        val xPath = Path().apply {
-            val outer = arm * 0.96f
-            val inner = arm * 0.25f
-            val notch = arm * 0.42f
-            moveTo(cx - outer, cy - outer)
-            lineTo(cx - notch, cy - outer)
-            lineTo(cx, cy - inner)
-            lineTo(cx + notch, cy - outer)
-            lineTo(cx + outer, cy - outer)
-            lineTo(cx + inner, cy)
-            lineTo(cx + outer, cy + outer)
-            lineTo(cx + notch, cy + outer)
-            lineTo(cx, cy + inner)
-            lineTo(cx - notch, cy + outer)
-            lineTo(cx - outer, cy + outer)
-            lineTo(cx - inner, cy)
-            close()
-        }
-
-        drawPath(
-            path = xPath,
-            brush = Brush.linearGradient(
-                colors = listOf(
-                    Color(0xFF474E63),
-                    Color(0xFF1F2330),
-                    Color(0xFF3A4154),
-                    Color(0xFF151822)
-                ),
-                start = Offset(cx - arm, cy - arm),
-                end = Offset(cx + arm, cy + arm)
-            )
-        )
-
-        drawPath(
-            path = xPath,
-            color = Color(0xFF96A2BE).copy(alpha = 0.7f),
-            style = Stroke(width = 3.2f)
-        )
-
-        // Glowing inner cyber circuit lines
-        val strokeW = (arm * 0.045f).coerceAtLeast(3f)
-        drawLine(
-            color = glowColor.copy(alpha = 0.85f * effectivePulse),
-            start = Offset(cx - arm * 0.78f, cy - arm * 0.78f),
-            end = Offset(cx + arm * 0.78f, cy + arm * 0.78f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = glowColor.copy(alpha = 0.85f * effectivePulse),
-            start = Offset(cx + arm * 0.78f, cy - arm * 0.78f),
-            end = Offset(cx - arm * 0.78f, cy + arm * 0.78f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-        drawCircle(
-            color = Color.White.copy(alpha = 0.9f * effectivePulse),
-            radius = arm * 0.06f,
-            center = Offset(cx, cy)
-        )
     }
 }
 
@@ -318,6 +579,11 @@ fun HolographicGaugeRing(
             animation = tween(durationMillis = 4200, easing = LinearEasing)
         ),
         label = "ring_angle"
+    )
+    val animatedRingColor by animateColorAsState(
+        targetValue = ringColor,
+        animationSpec = tween(300),
+        label = "gauge_ring_color"
     )
 
     Column(
@@ -354,27 +620,23 @@ fun HolographicGaugeRing(
             val cx = w / 2f
             val cy = h * 0.52f
 
-            // Ambient under-glow
             drawOval(
                 brush = Brush.radialGradient(
-                    colors = listOf(ringColor.copy(alpha = 0.42f), Color.Transparent),
+                    colors = listOf(animatedRingColor.copy(alpha = 0.42f), Color.Transparent),
                     center = Offset(cx, cy),
                     radius = w * 0.5f
                 ),
                 topLeft = Offset(0f, 0f),
                 size = size
             )
-
-            // Outer glowing ring
             drawOval(
-                color = ringColor,
+                color = animatedRingColor,
                 topLeft = Offset(w * 0.04f, h * 0.14f),
                 size = Size(w * 0.92f, h * 0.72f),
                 style = Stroke(width = 5.5f)
             )
-            // Middle dashed/arc ring
             drawArc(
-                color = ringColor.copy(alpha = 0.85f),
+                color = animatedRingColor.copy(alpha = 0.85f),
                 startAngle = if (animate) spinPhase else 30f,
                 sweepAngle = 210f,
                 useCenter = false,
@@ -382,9 +644,8 @@ fun HolographicGaugeRing(
                 size = Size(w * 0.70f, h * 0.52f),
                 style = Stroke(width = 3.2f, cap = StrokeCap.Round)
             )
-            // Inner upper floating ring
             drawOval(
-                color = ringColor.copy(alpha = 0.9f),
+                color = animatedRingColor.copy(alpha = 0.9f),
                 topLeft = Offset(w * 0.26f, h * 0.06f),
                 size = Size(w * 0.48f, h * 0.34f),
                 style = Stroke(width = 3.2f)
@@ -397,7 +658,7 @@ fun HolographicGaugeRing(
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.4.sp
             ),
-            color = ringColor
+            color = animatedRingColor
         )
     }
 }

@@ -754,7 +754,7 @@ fun GamePanelOverlayContent(
                             .clickable { callbacks.onMinimizeClick() }
                             .padding(horizontal = 12.dp, vertical = 4.dp)
                     ) {
-                        Text("${telemetry.actualFps} FPS • GAME TURBO", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                        Text("${telemetry.actualFps} FPS • TURBO X HUD", style = MaterialTheme.typography.labelLarge, color = Color.White)
                     }
                     OverlayCircleAction(Icons.Rounded.Close, "Close Overlay", callbacks.onPowerExitClick, "overlay_power")
                 }

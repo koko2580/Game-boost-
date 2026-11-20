@@ -19,6 +19,7 @@ class ExampleRobolectricTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
     assertEquals("Turbo X", appName)
+    assertEquals("com.turbo.x", context.packageName)
   }
 
   @Test
@@ -68,5 +69,30 @@ class ExampleRobolectricTest {
     assertEquals(2.0f, status.frictionFactor, 0.01f)
     assertEquals(true, status.scrollMultiplier > 1.5f)
     assertEquals(true, status.activeGpuPipelineLabel.contains("OpenGL ES"))
+  }
+
+  @Test
+  fun `security guard seals and verifies turbo credit vault and rejects tampering`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val guard = com.example.security.AppSecurityGuard(context)
+
+    val futureExpiry = System.currentTimeMillis() + 3_600_000L
+    val sealed = guard.sealTurboCredit(expiresAtWallMs = futureExpiry, adsWatchedCount = 2)
+    org.junit.Assert.assertNotNull(sealed)
+
+    val valid = guard.unsealTurboCredit(sealed)
+    assertEquals(false, valid.tampered)
+    assertEquals(2, valid.adsWatchedCount)
+    assertEquals(true, valid.effectiveRemainingSeconds in 3590L..3601L)
+
+    // Tamper with ciphertext token and confirm AES-GCM authentication rejects it
+    val tamperedToken = sealed!!.dropLast(4) + "AAAA"
+    val rejected = guard.unsealTurboCredit(tamperedToken)
+    assertEquals(true, rejected.tampered)
+    assertEquals(0L, rejected.effectiveRemainingSeconds)
+
+    val audit = guard.runSecurityAudit()
+    assertEquals(true, audit.isSafeForGameplay)
+    assertEquals(true, audit.packageIntegrityOk)
   }
 }

@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,12 +20,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,7 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.example.data.PermissionStatus
-import com.example.ui.components.TurboTopLogoCorner
+import com.example.ui.components.TurboXTopBar
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberElevated
 import com.example.ui.theme.CyberSlate
@@ -73,34 +73,12 @@ fun PermissionsScreen(
             .background(ObsidianVoid)
             .systemBarsPadding()
     ) {
-        // Header matching Screenshot 3
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MidnightSurface)
-                .padding(end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        TurboXTopBar(
+            title = "System Permissions",
+            subtitle = "Hardware & Overlay Access",
+            onBack = onBack,
+            backTestTag = "permissions_back_btn"
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TurboTopLogoCorner()
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.testTag("permissions_back_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Back",
-                        tint = TextPrimary
-                    )
-                }
-                Text(
-                    text = "Permission",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = TextPrimary
-                )
-            }
-
             Box(
                 modifier = Modifier
                     .testTag("permissions_help_btn")
@@ -108,7 +86,7 @@ fun PermissionsScreen(
                     .background(CyberElevated)
                     .border(1.dp, CyberBorder, RoundedCornerShape(10.dp))
                     .clickable { showHelpDialog = true }
-                    .padding(horizontal = 18.dp, vertical = 10.dp)
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
                 Text("Help", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
             }
@@ -128,23 +106,23 @@ fun PermissionsScreen(
             ) {
                 PermissionCard(
                     title = "Do Not Disturb",
-                    description = "Click to allow Do Not Disturb permission to access the Do Not Disturb feature.",
+                    description = "Allows Turbo X to silence incoming alerts automatically while gaming.",
                     granted = permissions.dndGranted,
                     onClick = onRequestDnd,
                     testTag = "perm_dnd_card"
                 )
 
                 PermissionCard(
-                    title = "Allow floating windows",
-                    description = "Click to allow floating window permissions to access special GameTurbo features.",
+                    title = "Floating Overlay HUD",
+                    description = "Allows Turbo X to render the live performance HUD handle over games.",
                     granted = permissions.overlayGranted,
                     onClick = onRequestOverlay,
                     testTag = "perm_overlay_card"
                 )
 
                 PermissionCard(
-                    title = "Modifying system settings",
-                    description = "Click to allow editing of system settings to access additional functions of GameTurbo.",
+                    title = "Modifying System Settings",
+                    description = "Enables direct brightness lock, AutoLight, Auto-Rotate, and pointer speed tuning.",
                     granted = permissions.writeSettingsGranted,
                     onClick = onRequestWriteSettings,
                     testTag = "perm_write_settings_card"
@@ -160,9 +138,9 @@ fun PermissionsScreen(
             title = { Text("Permission Guide", color = TextPrimary) },
             text = {
                 Text(
-                    text = "• Do Not Disturb lets Game Turbo silence alerts automatically while gaming.\n\n" +
-                        "• Allow floating windows enables the live Game Turbo HUD handle & side panel over any game.\n\n" +
-                        "• Modifying system settings allows quick control of screen brightness, AutoLight, and Auto-Rotate from the HUD.",
+                    text = "• Do Not Disturb lets Turbo X silence alerts automatically while gaming.\n\n" +
+                        "• Floating Overlay HUD enables the live performance HUD handle & side panel over any game.\n\n" +
+                        "• Modifying System Settings allows direct control of brightness, AutoLight, Auto-Rotate, and pointer speed.",
                     color = TextSecondary
                 )
             },
@@ -183,13 +161,18 @@ private fun PermissionCard(
     onClick: () -> Unit,
     testTag: String
 ) {
+    val bannerBg by animateColorAsState(
+        targetValue = if (granted) EmeraldActive else Color(0xFF0E1320),
+        animationSpec = tween(250),
+        label = "perm_banner_bg"
+    )
     Column(
         modifier = Modifier
             .testTag(testTag)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(CyberSlate)
-            .border(1.dp, CyberBorder, RoundedCornerShape(14.dp))
+            .border(1.dp, if (granted) EmeraldActive.copy(alpha = 0.65f) else CyberBorder, RoundedCornerShape(16.dp))
             .clickable { onClick() }
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -197,8 +180,8 @@ private fun PermissionCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (granted) EmeraldActive else Color(0xFF0E1019))
+                .clip(RoundedCornerShape(12.dp))
+                .background(bannerBg)
                 .padding(horizontal = 16.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween

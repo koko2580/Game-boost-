@@ -3,6 +3,14 @@ package com.example.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,13 +31,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,7 +52,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.data.BACKGROUND_LIMIT_LABELS
 import com.example.data.CACHE_LIMIT_LABELS
 import com.example.data.CpuMode
@@ -60,7 +63,7 @@ import com.example.data.PermissionStatus
 import com.example.data.WallpaperTheme
 import com.example.security.SecurityAuditReport
 import com.example.ui.components.HolographicGaugeRing
-import com.example.ui.components.TurboTopLogoCorner
+import com.example.ui.components.TurboXTopBar
 import com.example.ui.components.cpuModeColor
 import com.example.ui.components.rememberTurboFlingBehavior
 import kotlinx.coroutines.delay
@@ -68,7 +71,6 @@ import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberElevated
 import com.example.ui.theme.CyberSlate
 import com.example.ui.theme.LocalTurboAccent
-import com.example.ui.theme.MidnightSurface
 import com.example.ui.theme.ObsidianVoid
 import com.example.ui.theme.RajdhaniFontFamily
 import com.example.ui.theme.TextMuted
@@ -77,16 +79,16 @@ import com.example.ui.theme.TextSecondary
 import java.util.Locale
 
 private enum class SettingsCategory(val title: String) {
-    DISTURBANCE("Disturbance Settings"),
-    PROTECTION("Setting up protection"),
-    CPU("Setting CPU"),
+    DISTURBANCE("Focus & DND"),
+    PROTECTION("Memory Guard"),
+    CPU("CPU Tuning"),
     PERFORMANCE("Performance"),
-    RAM("Setting Ram"),
-    WALLPAPER("Wallpaper Settings"),
-    CONTROL_PANEL("Control Panel Setting"),
-    GAME_PANEL("Game panel settings"),
-    OTHER("Other Options"),
-    ABOUT("About this app")
+    RAM("RAM & Cache"),
+    WALLPAPER("Themes"),
+    CONTROL_PANEL("HUD Handle"),
+    GAME_PANEL("Overlay Style"),
+    OTHER("Advanced"),
+    ABOUT("About & Security")
 }
 
 @Composable
@@ -123,41 +125,19 @@ fun SettingsScreen(
             .background(ObsidianVoid)
             .systemBarsPadding()
     ) {
-        // Header Bar matching Screenshots 1, 2, 4, 6..15
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MidnightSurface)
-                .padding(end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        // Sleek Original Turbo X Top Bar
+        TurboXTopBar(
+            title = "Turbo X Settings",
+            subtitle = selectedCategory.title,
+            onBack = onBack,
+            backTestTag = "settings_back_btn"
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TurboTopLogoCorner()
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.testTag("settings_back_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Back",
-                        tint = TextPrimary
-                    )
-                }
-                Text(
-                    text = "Setting",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = TextPrimary
-                )
-            }
-
             if (statusMessage != null) {
                 Text(
                     text = statusMessage,
                     style = MaterialTheme.typography.labelSmall,
                     color = accent,
-                    maxLines = 2,
-                    modifier = Modifier.padding(start = 12.dp)
+                    maxLines = 2
                 )
             }
         }
@@ -172,7 +152,7 @@ fun SettingsScreen(
                         modifier = Modifier
                             .width(228.dp)
                             .fillMaxHeight()
-                            .background(Color(0xFF151824))
+                            .background(Color(0xFF0B0F1A))
                             .verticalScroll(rememberScrollState())
                     ) {
                         SettingsCategory.entries.forEach { category ->
@@ -184,7 +164,7 @@ fun SettingsScreen(
                                     .background(
                                         if (isSelected) {
                                             Brush.horizontalGradient(
-                                                listOf(Color(0xFF282E42), accent.copy(alpha = 0.38f))
+                                                listOf(CyberSlate, accent.copy(alpha = 0.30f))
                                             )
                                         } else {
                                             Brush.horizontalGradient(
@@ -217,7 +197,7 @@ fun SettingsScreen(
                         }
                     }
 
-                    // Right Detail Pane
+                    // Right Animated Detail Pane
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -226,47 +206,69 @@ fun SettingsScreen(
                             .verticalScroll(rememberScrollState(), flingBehavior = turboFling)
                             .padding(horizontal = 24.dp, vertical = 16.dp)
                     ) {
-                        SettingsCategoryDetail(
-                            category = selectedCategory,
-                            settings = settings,
-                            telemetry = telemetry,
-                            performanceStatus = performanceStatus,
-                            permissions = permissions,
-                            securityAudit = securityAudit,
-                            performanceActions = performanceActions,
-                            onUpdateSettings = onUpdateSettings,
-                            onBoostRam = onBoostRam,
-                            onClearCache = onClearCache,
-                            onSelectWallpaperTheme = onSelectWallpaperTheme,
-                            onOpenPermissions = onOpenPermissions
-                        )
+                        AnimatedContent(
+                            targetState = selectedCategory,
+                            transitionSpec = {
+                                (fadeIn(tween(200, easing = FastOutSlowInEasing)) +
+                                    slideInVertically(tween(200)) { it / 16 }) togetherWith
+                                    fadeOut(tween(140))
+                            },
+                            label = "settings_detail_wide"
+                        ) { cat ->
+                            SettingsCategoryDetail(
+                                category = cat,
+                                settings = settings,
+                                telemetry = telemetry,
+                                performanceStatus = performanceStatus,
+                                permissions = permissions,
+                                securityAudit = securityAudit,
+                                performanceActions = performanceActions,
+                                onUpdateSettings = onUpdateSettings,
+                                onBoostRam = onBoostRam,
+                                onClearCache = onClearCache,
+                                onSelectWallpaperTheme = onSelectWallpaperTheme,
+                                onOpenPermissions = onOpenPermissions
+                            )
+                        }
                     }
                 }
             } else {
-                // Portrait Adaptive Layout: Horizontal category tabs + scrollable detail pane
+                // Portrait Adaptive Layout: Smooth pill tabs + animated detail pane
                 Column(modifier = Modifier.fillMaxSize()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF151824))
+                            .background(Color(0xFF0B0F1A))
                             .horizontalScroll(rememberScrollState(), flingBehavior = turboFling)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         SettingsCategory.entries.forEach { category ->
                             val isSelected = category == selectedCategory
+                            val pillBg by animateColorAsState(
+                                targetValue = if (isSelected) accent else CyberSlate,
+                                animationSpec = tween(180),
+                                label = "cat_pill_bg_${category.name}"
+                            )
                             Box(
                                 modifier = Modifier
                                     .testTag("settings_cat_${category.name}")
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isSelected) accent else CyberSlate)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(pillBg)
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) accent else CyberBorder.copy(alpha = 0.6f),
+                                        RoundedCornerShape(12.dp)
+                                    )
                                     .clickable { selectedCategory = category }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
                             ) {
                                 Text(
                                     text = category.title,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.White
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                    ),
+                                    color = if (isSelected) Color.White else TextSecondary
                                 )
                             }
                         }
@@ -279,20 +281,30 @@ fun SettingsScreen(
                             .verticalScroll(rememberScrollState(), flingBehavior = turboFling)
                             .padding(16.dp)
                     ) {
-                        SettingsCategoryDetail(
-                            category = selectedCategory,
-                            settings = settings,
-                            telemetry = telemetry,
-                            performanceStatus = performanceStatus,
-                            permissions = permissions,
-                            securityAudit = securityAudit,
-                            performanceActions = performanceActions,
-                            onUpdateSettings = onUpdateSettings,
-                            onBoostRam = onBoostRam,
-                            onClearCache = onClearCache,
-                            onSelectWallpaperTheme = onSelectWallpaperTheme,
-                            onOpenPermissions = onOpenPermissions
-                        )
+                        AnimatedContent(
+                            targetState = selectedCategory,
+                            transitionSpec = {
+                                (fadeIn(tween(200, easing = FastOutSlowInEasing)) +
+                                    slideInVertically(tween(200)) { it / 16 }) togetherWith
+                                    fadeOut(tween(140))
+                            },
+                            label = "settings_detail_portrait"
+                        ) { cat ->
+                            SettingsCategoryDetail(
+                                category = cat,
+                                settings = settings,
+                                telemetry = telemetry,
+                                performanceStatus = performanceStatus,
+                                permissions = permissions,
+                                securityAudit = securityAudit,
+                                performanceActions = performanceActions,
+                                onUpdateSettings = onUpdateSettings,
+                                onBoostRam = onBoostRam,
+                                onClearCache = onClearCache,
+                                onSelectWallpaperTheme = onSelectWallpaperTheme,
+                                onOpenPermissions = onOpenPermissions
+                            )
+                        }
                     }
                 }
             }
