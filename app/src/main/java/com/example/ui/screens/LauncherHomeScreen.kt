@@ -81,6 +81,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -106,6 +107,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.ads.AdMobBannerBar
+import com.example.data.CpuMode
 import com.example.data.GameSessionRecord
 import com.example.data.GameTurboSettings
 import com.example.data.HardwareTelemetry
@@ -131,7 +133,9 @@ import com.example.ui.theme.RajdhaniFontFamily
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -146,7 +150,8 @@ fun LauncherHomeScreen(
     remainingTurboSeconds: Long,
     statusMessage: String?,
     isOverlayServiceRunning: Boolean,
-    getAppIcon: (String) -> ImageBitmap?,
+    peekAppIcon: (String) -> ImageBitmap?,
+    loadAppIconAsync: suspend (String) -> ImageBitmap?,
     onSelectGame: (String) -> Unit,
     onStartPlay: () -> Unit,
     onAddTurboTimeClick: () -> Unit,
@@ -157,6 +162,7 @@ fun LauncherHomeScreen(
     onNavigatePermissions: () -> Unit,
     onBoostRam: () -> Unit,
     onRunPingTest: () -> Unit,
+    onSelectCpuMode: (CpuMode) -> Unit,
     onSelectWallpaperTheme: (WallpaperTheme, String?) -> Unit,
     onDismissStatus: () -> Unit
 ) {
@@ -182,19 +188,31 @@ fun LauncherHomeScreen(
 
     val selectedGame = addedGames.find { it.packageName == settings.selectedGamePackage }
         ?: addedGames.firstOrNull()
-    val selectedGameIcon = remember(selectedGame?.packageName) {
-        selectedGame?.let { getAppIcon(it.packageName) }
+    val selectedGameIcon by produceState<ImageBitmap?>(
+        initialValue = selectedGame?.let { peekAppIcon(it.packageName) },
+        key1 = selectedGame?.packageName
+    ) {
+        val pkg = selectedGame?.packageName
+        value = if (pkg != null) {
+            peekAppIcon(pkg) ?: loadAppIconAsync(pkg)
+        } else {
+            null
+        }
     }
 
     val context = LocalContext.current
-    val customWallpaperBitmap = remember(settings.customWallpaperUri, settings.wallpaperTheme) {
-        if (settings.wallpaperTheme == WallpaperTheme.CUSTOM && settings.customWallpaperUri != null) {
-            runCatching {
-                context.contentResolver.openInputStream(Uri.parse(settings.customWallpaperUri))?.use { stream ->
-                    BitmapFactory.decodeStream(stream)?.asImageBitmap()
-                }
-            }.getOrNull()
-        } else null
+    val customWallpaperBitmap by produceState<ImageBitmap?>(
+        initialValue = null,
+        key1 = settings.customWallpaperUri,
+        key2 = settings.wallpaperTheme
+    ) {
+        value = if (settings.wallpaperTheme == WallpaperTheme.CUSTOM && settings.customWallpaperUri != null) {
+            withContext(Dispatchers.IO) {
+                decodeSampledWallpaper(context, Uri.parse(settings.customWallpaperUri), maxDimensionPx = 1280)
+            }
+        } else {
+            null
+        }
     }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -239,9 +257,9 @@ fun LauncherHomeScreen(
                 )
         )
 
-        if (customWallpaperBitmap != null) {
+        customWallpaperBitmap?.let { wallpaper ->
             Image(
-                bitmap = customWallpaperBitmap,
+                bitmap = wallpaper,
                 contentDescription = "Custom launcher background",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -409,7 +427,8 @@ fun LauncherHomeScreen(
                                             games = addedGames,
                                             selectedPackage = selectedGame?.packageName,
                                             accentColor = palette.accent,
-                                            getAppIcon = getAppIcon,
+                                            peekAppIcon = peekAppIcon,
+                                            loadAppIconAsync = loadAppIconAsync,
                                             onSelectGame = onSelectGame,
                                             onAddGames = onNavigateAddApps,
                                             modifier = Modifier.weight(1f)
@@ -422,37 +441,27 @@ fun LauncherHomeScreen(
                                         )
                                     }
 
-                                    // Center Reactor Dial + Right Action Deck
+                                    // Center Flagship Cockpit Hero Card + Right Action Deck
                                     Row(
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxHeight(),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                                     ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            TurboCockpitReactor(
-                                                glowColor = modeGlowColor,
-                                                secondaryColor = palette.secondaryGlow,
-                                                actualFps = telemetry.actualFps,
-                                                cpuFreqMHz = telemetry.cpuFreqMHz,
-                                                ramUsedPercent = telemetry.ramUsedPercent,
-                                                modeLabel = settings.cpuMode.label,
-                                                gameIcon = selectedGameIcon,
-                                                animatePulse = settings.homeAnimation,
-                                                modifier = Modifier.size(224.dp)
-                                            )
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            SelectedGamePill(
-                                                game = selectedGame,
-                                                cpuModeLabel = settings.cpuMode.label,
-                                                targetHz = maxOf(settings.frameRateTarget, settings.fpsGameTarget),
-                                                accentColor = modeGlowColor
-                                            )
-                                        }
+                                        CockpitHeroCard(
+                                            selectedGame = selectedGame,
+                                            selectedGameIcon = selectedGameIcon,
+                                            settings = settings,
+                                            telemetry = telemetry,
+                                            glowColor = modeGlowColor,
+                                            secondaryColor = palette.secondaryGlow,
+                                            onSelectCpuMode = onSelectCpuMode,
+                                            onBoostRam = onBoostRam,
+                                            onRunPingTest = onRunPingTest,
+                                            onAddGames = onNavigateAddApps,
+                                            modifier = Modifier.weight(1f)
+                                        )
 
                                         StartPlayButtonCluster(
                                             accentColor = palette.accent,
@@ -468,35 +477,31 @@ fun LauncherHomeScreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                                        .padding(horizontal = 16.dp, vertical = 6.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    // Telemetry Reactor Core
-                                    Column(
+                                    // Center Pro Telemetry Hero Card (fills middle weight cleanly without empty void)
+                                    Box(
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxWidth(),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        TurboCockpitReactor(
+                                        CockpitHeroCard(
+                                            selectedGame = selectedGame,
+                                            selectedGameIcon = selectedGameIcon,
+                                            settings = settings,
+                                            telemetry = telemetry,
                                             glowColor = modeGlowColor,
                                             secondaryColor = palette.secondaryGlow,
-                                            actualFps = telemetry.actualFps,
-                                            cpuFreqMHz = telemetry.cpuFreqMHz,
-                                            ramUsedPercent = telemetry.ramUsedPercent,
-                                            modeLabel = settings.cpuMode.label,
-                                            gameIcon = selectedGameIcon,
-                                            animatePulse = settings.homeAnimation,
-                                            modifier = Modifier.size(204.dp)
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        SelectedGamePill(
-                                            game = selectedGame,
-                                            cpuModeLabel = settings.cpuMode.label,
-                                            targetHz = maxOf(settings.frameRateTarget, settings.fpsGameTarget),
-                                            accentColor = modeGlowColor
+                                            onSelectCpuMode = onSelectCpuMode,
+                                            onBoostRam = onBoostRam,
+                                            onRunPingTest = onRunPingTest,
+                                            onAddGames = onNavigateAddApps,
+                                            modifier = Modifier
+                                                .widthIn(max = 520.dp)
+                                                .fillMaxWidth()
                                         )
                                     }
 
@@ -542,11 +547,19 @@ fun LauncherHomeScreen(
                                                 modifier = Modifier.weight(1f)
                                             ) {
                                                 items(addedGames, key = { it.packageName }) { game ->
+                                                    val chipIcon by produceState<ImageBitmap?>(
+                                                        initialValue = peekAppIcon(game.packageName),
+                                                        key1 = game.packageName
+                                                    ) {
+                                                        if (value == null) {
+                                                            value = loadAppIconAsync(game.packageName)
+                                                        }
+                                                    }
                                                     PortraitGameChip(
                                                         game = game,
                                                         selected = game.packageName == selectedGame?.packageName,
                                                         accentColor = palette.accent,
-                                                        icon = getAppIcon(game.packageName),
+                                                        icon = chipIcon,
                                                         onClick = { onSelectGame(game.packageName) }
                                                     )
                                                 }
@@ -679,35 +692,349 @@ fun LauncherHomeScreen(
 }
 
 @Composable
-private fun SelectedGamePill(
-    game: InstalledAppInfo?,
-    cpuModeLabel: String,
-    targetHz: Int,
-    accentColor: Color
+private fun CockpitHeroCard(
+    selectedGame: InstalledAppInfo?,
+    selectedGameIcon: ImageBitmap?,
+    settings: GameTurboSettings,
+    telemetry: HardwareTelemetry,
+    glowColor: Color,
+    secondaryColor: Color,
+    onSelectCpuMode: (CpuMode) -> Unit,
+    onBoostRam: () -> Unit,
+    onRunPingTest: () -> Unit,
+    onAddGames: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val targetHz = maxOf(settings.frameRateTarget, settings.fpsGameTarget)
+    val themeAccent = LocalTurboAccent.current.accent
+    val animatedAccent by animateColorAsState(
+        targetValue = glowColor,
+        animationSpec = tween(320),
+        label = "hero_accent"
+    )
+    val cpuFraction by animateFloatAsState(
+        targetValue = (telemetry.cpuFreqMHz / 3200f).coerceIn(0.18f, 1f),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
+        label = "hero_cpu_bar"
+    )
+    val ramFraction by animateFloatAsState(
+        targetValue = (telemetry.ramUsedPercent / 100f).coerceIn(0.10f, 1f),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
+        label = "hero_ram_bar"
+    )
+
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(MidnightSurface.copy(alpha = 0.78f))
-            .border(1.dp, CyberBorder.copy(alpha = 0.65f), RoundedCornerShape(14.dp))
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+        modifier = modifier
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MidnightSurface.copy(alpha = 0.96f),
+                        Color(0xFF090D18)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        animatedAccent.copy(alpha = 0.55f),
+                        CyberBorder.copy(alpha = 0.7f),
+                        secondaryColor.copy(alpha = 0.35f)
+                    )
+                ),
+                shape = RoundedCornerShape(24.dp)
+            )
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // 1. Selected Game Profile Header + Quick Boost Chip
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(enabled = selectedGame == null) { onAddGames() }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(CyberElevated)
+                        .border(1.dp, animatedAccent.copy(alpha = 0.55f), RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (selectedGameIcon != null) {
+                        Image(
+                            bitmap = selectedGameIcon,
+                            contentDescription = selectedGame?.appName ?: "Selected Game",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(12.dp))
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Rounded.SportsEsports,
+                            contentDescription = "Add Game",
+                            tint = animatedAccent,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = selectedGame?.appName ?: "No Game Selected",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = RajdhaniFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        ),
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = if (selectedGame != null) {
+                            "${targetHz}Hz Target • ${telemetry.cpuCoreCount} Cores Active"
+                        } else {
+                            "Tap + below to add a game"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Quick Boost Pill
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .testTag("hero_quick_boost_btn")
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(animatedAccent.copy(alpha = 0.14f))
+                    .border(1.dp, animatedAccent.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .clickable { onBoostRam() }
+                    .padding(horizontal = 12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Bolt,
+                    contentDescription = "Quick RAM Boost",
+                    tint = animatedAccent,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = "BOOST",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp
+                    ),
+                    color = TextPrimary
+                )
+            }
+        }
+
+        // Subtle divider line
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(CyberBorder.copy(alpha = 0.45f))
+        )
+
+        // 2. Precision FPS Dial + Live Hardware Readout Stack
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            TurboCockpitReactor(
+                glowColor = animatedAccent,
+                secondaryColor = secondaryColor,
+                actualFps = telemetry.actualFps,
+                cpuFreqMHz = telemetry.cpuFreqMHz,
+                ramUsedPercent = telemetry.ramUsedPercent,
+                animatePulse = settings.homeAnimation,
+                modifier = Modifier.size(144.dp)
+            )
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(11.dp)
+            ) {
+                HeroTelemetryBarRow(
+                    label = "CPU CLOCK",
+                    valueText = "${telemetry.cpuFreqMHz} MHz",
+                    progress = cpuFraction,
+                    barColor = animatedAccent
+                )
+                HeroTelemetryBarRow(
+                    label = "MEMORY LOAD",
+                    valueText = "${telemetry.ramUsedPercent}% RAM",
+                    progress = ramFraction,
+                    barColor = secondaryColor
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HeroMiniBadge(
+                        icon = Icons.Rounded.Thermostat,
+                        label = "${telemetry.batteryTempCelsius}°C",
+                        tint = if (telemetry.batteryTempCelsius >= 41f) CyberAmber else EmeraldBright,
+                        modifier = Modifier.weight(1f)
+                    )
+                    HeroMiniBadge(
+                        icon = Icons.Rounded.NetworkCheck,
+                        label = telemetry.pingMs?.let { "${it} ms" } ?: "Ping",
+                        tint = ElectricCyan,
+                        onClick = onRunPingTest,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        // 3. Interactive Engine Mode Selector (Eco | Balanced | Turbo)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(ObsidianVoid.copy(alpha = 0.78f))
+                .border(1.dp, CyberBorder.copy(alpha = 0.65f), RoundedCornerShape(14.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            listOf(
+                CpuMode.ENERGY_SAVING to "Eco",
+                CpuMode.BALANCED to "Balanced",
+                CpuMode.ACCELERATION to "Turbo"
+            ).forEach { (mode, shortLabel) ->
+                val selected = settings.cpuMode == mode
+                val pillColor = cpuModeColor(mode, themeAccent)
+                val bg by animateColorAsState(
+                    targetValue = if (selected) pillColor.copy(alpha = 0.22f) else Color.Transparent,
+                    animationSpec = tween(220),
+                    label = "mode_pill_bg"
+                )
+                val border by animateColorAsState(
+                    targetValue = if (selected) pillColor.copy(alpha = 0.85f) else Color.Transparent,
+                    animationSpec = tween(220),
+                    label = "mode_pill_border"
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(bg)
+                        .border(1.dp, border, RoundedCornerShape(10.dp))
+                        .clickable { onSelectCpuMode(mode) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = shortLabel.uppercase(),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontFamily = RajdhaniFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.9.sp
+                        ),
+                        color = if (selected) pillColor else TextMuted,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroTelemetryBarRow(
+    label: String,
+    valueText: String,
+    progress: Float,
+    barColor: Color
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontFamily = RajdhaniFontFamily,
+                    letterSpacing = 0.8.sp,
+                    fontSize = 10.sp
+                ),
+                color = TextMuted
+            )
+            Text(
+                text = valueText,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontFamily = RajdhaniFontFamily,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = TextPrimary
+            )
+        }
+        LinearProgressIndicator(
+            progress = { progress },
+            color = barColor,
+            trackColor = CyberSlate,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+        )
+    }
+}
+
+@Composable
+private fun HeroMiniBadge(
+    icon: ImageVector,
+    label: String,
+    tint: Color,
+    onClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(CyberElevated.copy(alpha = 0.85f))
+            .border(1.dp, CyberBorder.copy(alpha = 0.65f), RoundedCornerShape(10.dp))
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
         Text(
-            text = game?.appName ?: "Select a Game Below",
-            style = MaterialTheme.typography.titleMedium.copy(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
                 fontFamily = RajdhaniFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
+                fontWeight = FontWeight.Bold
             ),
             color = TextPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = "$cpuModeLabel • ${targetHz}Hz Target",
-            style = MaterialTheme.typography.labelSmall,
-            color = accentColor
+            maxLines = 1
         )
     }
 }
@@ -860,7 +1187,8 @@ private fun GameDockList(
     games: List<InstalledAppInfo>,
     selectedPackage: String?,
     accentColor: Color,
-    getAppIcon: (String) -> ImageBitmap?,
+    peekAppIcon: (String) -> ImageBitmap?,
+    loadAppIconAsync: suspend (String) -> ImageBitmap?,
     onSelectGame: (String) -> Unit,
     onAddGames: () -> Unit,
     modifier: Modifier = Modifier
@@ -898,7 +1226,14 @@ private fun GameDockList(
         ) {
             items(games, key = { it.packageName }) { game ->
                 val isSelected = game.packageName == selectedPackage
-                val iconBitmap = remember(game.packageName) { getAppIcon(game.packageName) }
+                val iconBitmap by produceState<ImageBitmap?>(
+                    initialValue = peekAppIcon(game.packageName),
+                    key1 = game.packageName
+                ) {
+                    if (value == null) {
+                        value = loadAppIconAsync(game.packageName)
+                    }
+                }
                 val bgColor by animateColorAsState(
                     targetValue = if (isSelected) accentColor.copy(alpha = 0.16f) else MidnightSurface.copy(alpha = 0.78f),
                     animationSpec = tween(200),
@@ -921,9 +1256,10 @@ private fun GameDockList(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    if (iconBitmap != null) {
+                    val resolvedDockIcon = iconBitmap
+                    if (resolvedDockIcon != null) {
                         Image(
-                            bitmap = iconBitmap,
+                            bitmap = resolvedDockIcon,
                             contentDescription = game.appName,
                             modifier = Modifier
                                 .size(40.dp)
@@ -1509,6 +1845,32 @@ private fun WallpaperThemeDialog(
         }
     }
 }
+
+private fun decodeSampledWallpaper(
+    context: android.content.Context,
+    uri: Uri,
+    maxDimensionPx: Int
+): ImageBitmap? = runCatching {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    context.contentResolver.openInputStream(uri)?.use { stream ->
+        BitmapFactory.decodeStream(stream, null, bounds)
+    }
+    var sampleSize = 1
+    val width = bounds.outWidth
+    val height = bounds.outHeight
+    if (width > maxDimensionPx || height > maxDimensionPx) {
+        while ((width / sampleSize) > maxDimensionPx * 2 || (height / sampleSize) > maxDimensionPx * 2) {
+            sampleSize *= 2
+        }
+    }
+    val decodeOpts = BitmapFactory.Options().apply {
+        inSampleSize = sampleSize
+        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+    }
+    context.contentResolver.openInputStream(uri)?.use { stream ->
+        BitmapFactory.decodeStream(stream, null, decodeOpts)?.asImageBitmap()
+    }
+}.getOrNull()
 
 private fun formatClock(): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
 

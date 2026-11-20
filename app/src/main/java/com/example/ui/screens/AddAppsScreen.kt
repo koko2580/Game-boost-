@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,7 +62,8 @@ fun AddAppsScreen(
     apps: List<InstalledAppInfo>,
     addedPackages: Set<String>,
     isLoading: Boolean,
-    getAppIcon: (String) -> ImageBitmap?,
+    peekAppIcon: (String) -> ImageBitmap?,
+    loadAppIconAsync: suspend (String) -> ImageBitmap?,
     onToggleApp: (String) -> Unit,
     onBack: () -> Unit
 ) {
@@ -142,7 +144,14 @@ fun AddAppsScreen(
             ) {
                 items(filteredApps, key = { it.packageName }) { app ->
                     val isAdded = app.packageName in addedPackages
-                    val iconBitmap = remember(app.packageName) { getAppIcon(app.packageName) }
+                    val iconBitmap by produceState<ImageBitmap?>(
+                        initialValue = peekAppIcon(app.packageName),
+                        key1 = app.packageName
+                    ) {
+                        if (value == null) {
+                            value = loadAppIconAsync(app.packageName)
+                        }
+                    }
 
                     Row(
                         modifier = Modifier
@@ -151,9 +160,10 @@ fun AddAppsScreen(
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (iconBitmap != null) {
+                        val resolvedIcon = iconBitmap
+                        if (resolvedIcon != null) {
                             Image(
-                                bitmap = iconBitmap,
+                                bitmap = resolvedIcon,
                                 contentDescription = app.appName,
                                 modifier = Modifier
                                     .size(48.dp)

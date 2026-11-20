@@ -208,7 +208,8 @@ class AdMobManager(private val appContext: Context) {
                 ?: return@runCatching true
             val network = cm.activeNetwork ?: return@runCatching false
             val caps = cm.getNetworkCapabilities(network) ?: return@runCatching false
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
         }.getOrDefault(true)
     }
 

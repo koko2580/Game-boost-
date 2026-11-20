@@ -24,6 +24,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
+import android.util.LruCache
 import android.view.Display
 import android.view.WindowManager
 import androidx.compose.ui.graphics.ImageBitmap
@@ -33,12 +34,24 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 
 class SystemHardwareController(private val context: Context) {
 
-    private val iconCache = ConcurrentHashMap<String, ImageBitmap>()
+    private val activityManager by lazy(LazyThreadSafetyMode.NONE) {
+        context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+    }
+    private val isLowRamDevice: Boolean by lazy(LazyThreadSafetyMode.NONE) {
+        activityManager?.isLowRamDevice == true
+    }
+    private val iconCache: LruCache<String, ImageBitmap> by lazy(LazyThreadSafetyMode.NONE) {
+        LruCache(if (isLowRamDevice) 32 else 64)
+    }
+    private val cachedDeviceModel: String by lazy(LazyThreadSafetyMode.NONE) {
+        "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
+    }
+    private val cachedAndroidVersion: String = Build.VERSION.RELEASE ?: "14"
+
     val audioEnhancer = GameAudioEnhancer(context)
     val performanceEngine = PerformanceTuningEngine(context)
 
@@ -173,22 +186,46 @@ class SystemHardwareController(private val context: Context) {
         }.sortedWith(compareBy<InstalledAppInfo> { it.isSystemApp }.thenBy { it.appName.lowercase() })
     }
 
+    fun peekCachedAppIcon(packageName: String): ImageBitmap? = synchronized(iconCache) {
+        iconCache.get(packageName)
+    }
+
+    suspend fun loadAppIconAsync(packageName: String): ImageBitmap? {
+        peekCachedAppIcon(packageName)?.let { return it }
+        return withContext(Dispatchers.IO) {
+            getAppIcon(packageName)
+        }
+    }
+
     fun getAppIcon(packageName: String): ImageBitmap? {
-        iconCache[packageName]?.let { return it }
+        peekCachedAppIcon(packageName)?.let { return it }
         return runCatching {
             val drawable = context.packageManager.getApplicationIcon(packageName)
             val bitmap = drawableToBitmap(drawable).asImageBitmap()
-            iconCache[packageName] = bitmap
+            synchronized(iconCache) {
+                iconCache.put(packageName, bitmap)
+            }
             bitmap
         }.getOrNull()
     }
 
     private fun drawableToBitmap(drawable: Drawable): Bitmap {
+        val targetMaxPx = if (isLowRamDevice) 72 else 96
         if (drawable is BitmapDrawable && drawable.bitmap != null) {
-            return drawable.bitmap
+            val src = drawable.bitmap
+            if (src.width <= targetMaxPx && src.height <= targetMaxPx) {
+                return src
+            }
+            val scale = minOf(
+                targetMaxPx.toFloat() / src.width.coerceAtLeast(1),
+                targetMaxPx.toFloat() / src.height.coerceAtLeast(1)
+            )
+            val w = (src.width * scale).toInt().coerceAtLeast(1)
+            val h = (src.height * scale).toInt().coerceAtLeast(1)
+            return Bitmap.createScaledBitmap(src, w, h, true)
         }
-        val width = drawable.intrinsicWidth.coerceAtLeast(96).coerceAtMost(192)
-        val height = drawable.intrinsicHeight.coerceAtLeast(96).coerceAtMost(192)
+        val width = drawable.intrinsicWidth.coerceIn(48, targetMaxPx)
+        val height = drawable.intrinsicHeight.coerceIn(48, targetMaxPx)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, canvas.width, canvas.height)
@@ -211,9 +248,8 @@ class SystemHardwareController(private val context: Context) {
             CpuMode.ACCELERATION -> 1850
         }
 
-        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val memInfo = ActivityManager.MemoryInfo()
-        am?.getMemoryInfo(memInfo)
+        activityManager?.getMemoryInfo(memInfo)
         val totalMb = (memInfo.totalMem / (1024L * 1024L)).coerceAtLeast(1L)
         val availMb = (memInfo.availMem / (1024L * 1024L)).coerceAtLeast(0L)
         val usedPercent = (((totalMb - availMb).toDouble() / totalMb.toDouble()) * 100.0)
@@ -252,8 +288,8 @@ class SystemHardwareController(private val context: Context) {
             actualFps = actualFps,
             frameTimeMs = frameTimeMs,
             gpuRenderer = gpuSummary,
-            deviceModel = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
-            androidVersion = Build.VERSION.RELEASE ?: "14",
+            deviceModel = cachedDeviceModel,
+            androidVersion = cachedAndroidVersion,
             pingMs = lastPingMs,
             pingJitterMs = lastJitterMs,
             networkType = netType,
@@ -382,7 +418,6 @@ class SystemHardwareController(private val context: Context) {
         }
 
         val freedCacheBytes = clearDirectoryBytes(context.cacheDir) + clearDirectoryBytes(context.codeCacheDir)
-        System.gc()
 
         val after = ActivityManager.MemoryInfo()
         am?.getMemoryInfo(after)

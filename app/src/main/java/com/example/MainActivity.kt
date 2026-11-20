@@ -2,10 +2,12 @@ package com.example
 
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import android.view.Choreographer
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -14,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -51,6 +54,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -61,6 +67,7 @@ import com.example.service.GameOverlayService
 import com.example.ui.components.CrosshairOverlay
 import com.example.ui.components.GamePanelOverlayContent
 import com.example.ui.components.LocalTurboTouchConfig
+import com.example.ui.components.NetworkGateOverlay
 import com.example.ui.components.OverlayCallbacks
 import com.example.ui.components.RewardedAdDialog
 import com.example.ui.components.TurboCockpitReactor
@@ -71,6 +78,7 @@ import com.example.ui.screens.LauncherHomeScreen
 import com.example.ui.screens.PerformanceActions
 import com.example.ui.screens.PermissionsScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.TurboSplashScreen
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.EmeraldBright
 import com.example.ui.theme.LocalTurboAccent
@@ -95,7 +103,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         pendingRoute = intent?.getStringExtra(GameOverlayService.EXTRA_START_ROUTE)
         window.decorView.filterTouchesWhenObscured = true
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(AndroidColor.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(AndroidColor.TRANSPARENT)
+        )
         setContent {
             val viewModel: GameTurboViewModel = viewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -123,18 +134,49 @@ class MainActivity : ComponentActivity() {
             val rewardedCooldownSeconds by viewModel.rewardedCooldownSeconds.collectAsStateWithLifecycle()
             val performanceStatus by viewModel.performanceStatus.collectAsStateWithLifecycle()
             val securityAudit by viewModel.securityAudit.collectAsStateWithLifecycle()
+            val showSplash by viewModel.showSplash.collectAsStateWithLifecycle()
+            val isNetworkConnected by viewModel.isNetworkConnected.collectAsStateWithLifecycle()
 
-            // Real Choreographer FPS measurement + ADPF frame duration reporting
-            DisposableEffect(Unit) {
-                val callback = object : Choreographer.FrameCallback {
+            val lifecycleOwner = LocalLifecycleOwner.current
+            DisposableEffect(lifecycleOwner) {
+                var choreographerActive = false
+                val frameCallback = object : Choreographer.FrameCallback {
                     override fun doFrame(frameTimeNanos: Long) {
+                        if (!choreographerActive) return
                         viewModel.onChoreographerFrame(frameTimeNanos)
                         Choreographer.getInstance().postFrameCallback(this)
                     }
                 }
-                Choreographer.getInstance().postFrameCallback(callback)
+                val observer = LifecycleEventObserver { _, event ->
+                    when (event) {
+                        Lifecycle.Event.ON_START -> {
+                            viewModel.setUiActive(true)
+                            if (!choreographerActive) {
+                                choreographerActive = true
+                                Choreographer.getInstance().postFrameCallback(frameCallback)
+                            }
+                        }
+                        Lifecycle.Event.ON_RESUME -> {
+                            viewModel.refreshNetworkConnection()
+                        }
+                        Lifecycle.Event.ON_STOP -> {
+                            viewModel.setUiActive(false)
+                            choreographerActive = false
+                            Choreographer.getInstance().removeFrameCallback(frameCallback)
+                        }
+                        else -> Unit
+                    }
+                }
+                if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    viewModel.setUiActive(true)
+                    choreographerActive = true
+                    Choreographer.getInstance().postFrameCallback(frameCallback)
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
                 onDispose {
-                    Choreographer.getInstance().removeFrameCallback(callback)
+                    choreographerActive = false
+                    Choreographer.getInstance().removeFrameCallback(frameCallback)
+                    lifecycleOwner.lifecycle.removeObserver(observer)
                 }
             }
 
@@ -193,6 +235,7 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(pendingRoute) {
                         val target = pendingRoute
                         if (target != null && target != ROUTE_LAUNCHER) {
+                            viewModel.markSplashComplete()
                             navController.navigate(target) { launchSingleTop = true }
                             pendingRoute = null
                         }
@@ -213,7 +256,8 @@ class MainActivity : ComponentActivity() {
                                 remainingTurboSeconds = remainingTurboSeconds,
                                 statusMessage = statusMessage,
                                 isOverlayServiceRunning = isOverlayServiceRunning,
-                                getAppIcon = viewModel::getAppIcon,
+                                peekAppIcon = viewModel::peekAppIcon,
+                                loadAppIconAsync = viewModel::loadAppIconAsync,
                                 onSelectGame = viewModel::selectGame,
                                 onStartPlay = viewModel::launchSelectedGame,
                                 onAddTurboTimeClick = { viewModel.openWatchAdPrompt() },
@@ -230,6 +274,7 @@ class MainActivity : ComponentActivity() {
                                 onNavigatePermissions = { navController.navigate(ROUTE_PERMISSIONS) },
                                 onBoostRam = viewModel::performBoost,
                                 onRunPingTest = viewModel::runPingTest,
+                                onSelectCpuMode = viewModel::setCpuMode,
                                 onSelectWallpaperTheme = viewModel::setWallpaperTheme,
                                 onDismissStatus = viewModel::clearStatus
                             )
@@ -280,7 +325,8 @@ class MainActivity : ComponentActivity() {
                                 apps = installedApps,
                                 addedPackages = settings.addedGamePackages,
                                 isLoading = appsLoading,
-                                getAppIcon = viewModel::getAppIcon,
+                                peekAppIcon = viewModel::peekAppIcon,
+                                loadAppIconAsync = viewModel::loadAppIconAsync,
                                 onToggleApp = viewModel::toggleGameAdded,
                                 onBack = { navController.popBackStack() }
                             )
@@ -458,6 +504,27 @@ class MainActivity : ComponentActivity() {
                         onRetryLoad = viewModel::retryLoadRewardedAd,
                         onDismiss = viewModel::dismissAdDialog
                     )
+
+                    // Mandatory Online Gate (blocks app usage completely when offline)
+                    AnimatedVisibility(
+                        visible = !isNetworkConnected && !showSplash,
+                        enter = fadeIn(tween(220)),
+                        exit = fadeOut(tween(220))
+                    ) {
+                        NetworkGateOverlay(
+                            onOpenNetworkSettings = viewModel::openNetworkSettings,
+                            onRetryCheck = { viewModel.refreshNetworkConnection() }
+                        )
+                    }
+
+                    // Animated Turbo X Brand Splash Screen
+                    AnimatedVisibility(
+                        visible = showSplash && launchingGameName == null,
+                        enter = fadeIn(tween(100)),
+                        exit = fadeOut(tween(380)) + scaleOut(targetScale = 1.06f, animationSpec = tween(380))
+                    ) {
+                        TurboSplashScreen(onFinished = viewModel::markSplashComplete)
+                    }
                     }
                 }
             }

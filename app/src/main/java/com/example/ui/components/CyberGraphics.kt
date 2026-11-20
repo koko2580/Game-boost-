@@ -317,8 +317,8 @@ fun CyberToggleSwitch(
 }
 
 /**
- * Original Turbo X Precision Telemetry Reactor Dial — replaces cloned red X emblem.
- * Shows live FPS, CPU frequency ratio ring, RAM usage arc, and optional selected game icon.
+ * Original Turbo X Precision Telemetry Reactor Dial.
+ * Clean 270° automotive/ROG-style tachometer arc with glowing sweep tip and uncluttered center readout.
  */
 @Composable
 fun TurboCockpitReactor(
@@ -338,14 +338,16 @@ fun TurboCockpitReactor(
         animationSpec = tween(420, easing = FastOutSlowInEasing),
         label = "reactor_glow"
     )
-    val animatedCpuProgress by animateFloatAsState(
-        targetValue = (cpuFreqMHz / 3200f).coerceIn(0.18f, 1f),
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow),
-        label = "reactor_cpu_arc"
+    val fpsRatio = (actualFps / 120f).coerceIn(0.18f, 1f)
+    val cpuRatio = (cpuFreqMHz / 3200f).coerceIn(0.22f, 1f)
+    val animatedMainSweep by animateFloatAsState(
+        targetValue = if (centerTitle != null) 0.85f else ((fpsRatio * 0.55f) + (cpuRatio * 0.45f)).coerceIn(0.24f, 0.96f),
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessLow),
+        label = "reactor_main_arc"
     )
-    val animatedRamProgress by animateFloatAsState(
-        targetValue = (ramUsedPercent / 100f).coerceIn(0.1f, 1f),
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow),
+    val animatedRamSweep by animateFloatAsState(
+        targetValue = (ramUsedPercent / 100f).coerceIn(0.12f, 0.96f),
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessLow),
         label = "reactor_ram_arc"
     )
 
@@ -354,15 +356,15 @@ fun TurboCockpitReactor(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 18000, easing = LinearEasing)
+            animation = tween(durationMillis = 24000, easing = LinearEasing)
         ),
         label = "orbit_angle"
     )
     val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.65f,
+        initialValue = 0.70f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "reactor_pulse"
@@ -380,29 +382,29 @@ fun TurboCockpitReactor(
             val h = size.height
             val cx = w / 2f
             val cy = h / 2f
-            val radius = minOf(w, h) * 0.45f
+            val radius = minOf(w, h) * 0.46f
 
-            // Deep ambient halo
+            // Subtle ambient radial halo
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        animatedGlow.copy(alpha = 0.28f * effectivePulse),
-                        secondaryColor.copy(alpha = 0.08f * effectivePulse),
+                        animatedGlow.copy(alpha = 0.22f * effectivePulse),
+                        secondaryColor.copy(alpha = 0.06f * effectivePulse),
                         Color.Transparent
                     ),
                     center = Offset(cx, cy),
-                    radius = radius * 1.18f
+                    radius = radius * 1.12f
                 ),
-                radius = radius * 1.18f,
+                radius = radius * 1.12f,
                 center = Offset(cx, cy)
             )
 
-            // Rotating precision tachometer tick ring
+            // Outer precision tick ring (slowly rotating)
             rotate(degrees = effectiveAngle, pivot = Offset(cx, cy)) {
                 val tickCount = 48
-                val tickOuter = radius * 0.98f
-                val tickInnerMajor = radius * 0.89f
-                val tickInnerMinor = radius * 0.93f
+                val tickOuter = radius * 0.99f
+                val tickInnerMajor = radius * 0.90f
+                val tickInnerMinor = radius * 0.94f
                 for (i in 0 until tickCount) {
                     val angleRad = (i * (360f / tickCount)) * (PI / 180.0)
                     val isMajor = i % 4 == 0
@@ -416,26 +418,30 @@ fun TurboCockpitReactor(
                         cy + (tickOuter * sin(angleRad)).toFloat()
                     )
                     drawLine(
-                        color = if (isMajor) animatedGlow.copy(alpha = 0.72f) else CyberBorder.copy(alpha = 0.75f),
+                        color = if (isMajor) animatedGlow.copy(alpha = 0.65f) else CyberBorder.copy(alpha = 0.50f),
                         start = start,
                         end = end,
-                        strokeWidth = if (isMajor) 2.6.dp.toPx() else 1.4.dp.toPx(),
+                        strokeWidth = if (isMajor) 2.dp.toPx() else 1.1.dp.toPx(),
                         cap = StrokeCap.Round
                     )
                 }
             }
 
-            // Outer track & CPU Load Sweep Arc (240 deg cockpit gauge)
-            val cpuRadius = radius * 0.80f
-            val cpuTopLeft = Offset(cx - cpuRadius, cy - cpuRadius)
-            val cpuSize = Size(cpuRadius * 2f, cpuRadius * 2f)
+            // 270-degree open-bottom main power arc
+            val mainRadius = radius * 0.81f
+            val mainTopLeft = Offset(cx - mainRadius, cy - mainRadius)
+            val mainSize = Size(mainRadius * 2f, mainRadius * 2f)
+            val startDeg = 135f
+            val fullSweep = 270f
+            val activeSweep = fullSweep * animatedMainSweep
+
             drawArc(
-                color = CyberSlate,
-                startAngle = 150f,
-                sweepAngle = 240f,
+                color = CyberSlate.copy(alpha = 0.85f),
+                startAngle = startDeg,
+                sweepAngle = fullSweep,
                 useCenter = false,
-                topLeft = cpuTopLeft,
-                size = cpuSize,
+                topLeft = mainTopLeft,
+                size = mainSize,
                 style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round)
             )
             drawArc(
@@ -443,117 +449,108 @@ fun TurboCockpitReactor(
                     colors = listOf(animatedGlow, secondaryColor, animatedGlow),
                     center = Offset(cx, cy)
                 ),
-                startAngle = 150f,
-                sweepAngle = 240f * animatedCpuProgress,
+                startAngle = startDeg,
+                sweepAngle = activeSweep,
                 useCenter = false,
-                topLeft = cpuTopLeft,
-                size = cpuSize,
+                topLeft = mainTopLeft,
+                size = mainSize,
                 style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round)
             )
 
-            // Inner track & RAM Arc
+            // Glowing tip dot at end of main sweep
+            val tipRad = (startDeg + activeSweep) * (PI / 180.0)
+            val tipCenter = Offset(
+                cx + (mainRadius * cos(tipRad)).toFloat(),
+                cy + (mainRadius * sin(tipRad)).toFloat()
+            )
+            drawCircle(
+                color = animatedGlow.copy(alpha = 0.40f),
+                radius = 7.dp.toPx(),
+                center = tipCenter
+            )
+            drawCircle(
+                color = Color.White,
+                radius = 3.2.dp.toPx(),
+                center = tipCenter
+            )
+
+            // Subtle inner cyan RAM progress ring
             val ramRadius = radius * 0.68f
             val ramTopLeft = Offset(cx - ramRadius, cy - ramRadius)
             val ramSize = Size(ramRadius * 2f, ramRadius * 2f)
             drawArc(
-                color = CyberBorder.copy(alpha = 0.45f),
-                startAngle = 20f,
-                sweepAngle = 140f,
+                color = CyberBorder.copy(alpha = 0.30f),
+                startAngle = 150f,
+                sweepAngle = 240f,
                 useCenter = false,
                 topLeft = ramTopLeft,
                 size = ramSize,
-                style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
             )
             drawArc(
-                color = secondaryColor.copy(alpha = 0.9f),
-                startAngle = 20f,
-                sweepAngle = 140f * animatedRamProgress,
+                color = secondaryColor.copy(alpha = 0.85f),
+                startAngle = 150f,
+                sweepAngle = 240f * animatedRamSweep,
                 useCenter = false,
                 topLeft = ramTopLeft,
                 size = ramSize,
-                style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
             )
 
-            // Obsidian inner core disc
+            // Clean inner obsidian core disc
             drawCircle(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF141B2D), Color(0xFF090C14))
+                    colors = listOf(Color(0xFF151C2F), Color(0xFF0A0E18))
                 ),
-                radius = radius * 0.58f,
+                radius = radius * 0.60f,
                 center = Offset(cx, cy)
             )
             drawCircle(
-                color = animatedGlow.copy(alpha = 0.45f),
-                radius = radius * 0.58f,
+                color = animatedGlow.copy(alpha = 0.32f),
+                radius = radius * 0.60f,
                 center = Offset(cx, cy),
-                style = Stroke(width = 1.5.dp.toPx())
+                style = Stroke(width = 1.2.dp.toPx())
             )
         }
 
-        // Center Telemetry Readout
+        // Uncluttered, centered readout with generous padding
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            if (gameIcon != null && centerTitle == null) {
-                Image(
-                    bitmap = gameIcon,
-                    contentDescription = "Selected Game",
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-            }
             if (centerTitle != null) {
                 TurboXLogoMark(
                     accentColor = animatedGlow,
                     modifier = Modifier.size(44.dp)
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = centerTitle,
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontFamily = RajdhaniFontFamily,
-                        letterSpacing = 1.5.sp
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.8.sp
                     ),
                     color = animatedGlow
                 )
             } else {
-                Row(
-                    verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = "$actualFps",
-                        style = MaterialTheme.typography.displayMedium.copy(
-                            fontFamily = RajdhaniFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 36.sp
-                        ),
-                        color = TextPrimary
-                    )
-                    Text(
-                        text = "FPS",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontFamily = RajdhaniFontFamily
-                        ),
-                        color = animatedGlow,
-                        modifier = Modifier.padding(bottom = 5.dp)
-                    )
-                }
                 Text(
-                    text = "$cpuFreqMHz MHz • $ramUsedPercent%",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary
-                )
-                Text(
-                    text = modeLabel.uppercase(),
-                    style = MaterialTheme.typography.labelSmall.copy(
+                    text = "$actualFps",
+                    style = MaterialTheme.typography.displayMedium.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
-                        fontSize = 10.sp
+                        fontSize = 38.sp,
+                        lineHeight = 38.sp
+                    ),
+                    color = TextPrimary
+                )
+                Text(
+                    text = "FPS",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.2.sp,
+                        fontSize = 12.sp
                     ),
                     color = animatedGlow
                 )

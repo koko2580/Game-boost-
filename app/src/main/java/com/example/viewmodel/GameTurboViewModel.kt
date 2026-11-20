@@ -27,10 +27,13 @@ import com.example.data.ScreenColorMode
 import com.example.data.SystemHardwareController
 import com.example.data.WallpaperTheme
 import com.example.data.ScreenshotHelper
+import com.example.network.NetworkGateMonitor
 import com.example.security.SecurityAuditReport
 import com.example.service.GameOverlayService
 import com.example.service.ScreenCaptureActivity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -138,6 +141,12 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     private val _adStep = MutableStateFlow<RewardedAdStep>(RewardedAdStep.Hidden)
     val adStep: StateFlow<RewardedAdStep> = _adStep.asStateFlow()
 
+    private val _showSplash = MutableStateFlow(true)
+    val showSplash: StateFlow<Boolean> = _showSplash.asStateFlow()
+
+    private val networkMonitor = NetworkGateMonitor(application)
+    val isNetworkConnected: StateFlow<Boolean> = networkMonitor.isConnected
+
     private var lastPingMs: Int? = null
     private var lastJitterMs: Int? = null
     private var lastFrameNanos: Long = 0L
@@ -147,12 +156,44 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     private var measuredFps: Int = 60
     @Volatile
     private var measuredFrameMs: Float = 16.6f
+    private val _isUiActive = MutableStateFlow(true)
 
     init {
         refreshInstalledApps()
         startTelemetryLoop()
         startStopwatchLoop()
         startTurboTimeLoop()
+        observeNetworkGate()
+    }
+
+    private fun observeNetworkGate() {
+        var wasConnected = isNetworkConnected.value
+        viewModelScope.launch {
+            isNetworkConnected.collect { connected ->
+                if (!connected) {
+                    _isInAppOverlayOpen.value = false
+                    _adStep.value = RewardedAdStep.Hidden
+                    stopFloatingOverlayService()
+                } else if (!wasConnected) {
+                    adMobManager?.loadRewardedAd()
+                    adMobManager?.loadInterstitialAd()
+                }
+                wasConnected = connected
+            }
+        }
+    }
+
+    fun refreshNetworkConnection(): Boolean {
+        val online = networkMonitor.refreshNow()
+        if (!online) {
+            hardware.audioEnhancer.pulseHaptic(false)
+        }
+        return online
+    }
+
+    fun openNetworkSettings() {
+        adMobManager?.suppressAppOpenTemporarily()
+        networkMonitor.openInternetSettings()
     }
 
     fun refreshSecurityAudit(): SecurityAuditReport {
@@ -206,19 +247,42 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun setUiActive(active: Boolean) {
+        if (!active) {
+            lastFrameNanos = 0L
+            frameCountWindow = 0
+            windowStartNanos = 0L
+        }
+        _isUiActive.value = active
+    }
+
     fun getAppIcon(packageName: String): ImageBitmap? = hardware.getAppIcon(packageName)
+
+    fun peekAppIcon(packageName: String): ImageBitmap? = hardware.peekCachedAppIcon(packageName)
+
+    suspend fun loadAppIconAsync(packageName: String): ImageBitmap? = hardware.loadAppIconAsync(packageName)
 
     private fun startTelemetryLoop() {
         viewModelScope.launch {
             while (true) {
+                if (!_isUiActive.value) {
+                    _isUiActive.first { it }
+                }
                 val mode = settings.value.cpuMode
-                _telemetry.value = hardware.readHardwareTelemetry(
-                    cpuMode = mode,
-                    lastPingMs = lastPingMs,
-                    lastJitterMs = lastJitterMs,
-                    actualFps = measuredFps,
-                    frameTimeMs = measuredFrameMs
-                )
+                val ping = lastPingMs
+                val jitter = lastJitterMs
+                val fps = measuredFps
+                val frameMs = measuredFrameMs
+                val snapshot = withContext(Dispatchers.Default) {
+                    hardware.readHardwareTelemetry(
+                        cpuMode = mode,
+                        lastPingMs = ping,
+                        lastJitterMs = jitter,
+                        actualFps = fps,
+                        frameTimeMs = frameMs
+                    )
+                }
+                _telemetry.value = snapshot
                 _volumeFraction.value = hardware.getVolumeFraction()
                 _isOverlayServiceRunning.value = GameOverlayService.isRunning
                 delay(1200L)
@@ -392,6 +456,10 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun dismissAdDialog() {
         _adStep.value = RewardedAdStep.Hidden
+    }
+
+    fun markSplashComplete() {
+        _showSplash.value = false
     }
 
     fun toggleStopwatch() {
@@ -671,16 +739,22 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
             val (ping, jitter) = hardware.measurePingWithJitter()
             lastPingMs = ping
             lastJitterMs = jitter
-            _telemetry.value = hardware.readHardwareTelemetry(
-                cpuMode = settings.value.cpuMode,
-                lastPingMs = ping,
-                lastJitterMs = jitter,
-                actualFps = measuredFps,
-                frameTimeMs = measuredFrameMs
-            )
+            val mode = settings.value.cpuMode
+            val fps = measuredFps
+            val frameMs = measuredFrameMs
+            val updated = withContext(Dispatchers.Default) {
+                hardware.readHardwareTelemetry(
+                    cpuMode = mode,
+                    lastPingMs = ping,
+                    lastJitterMs = jitter,
+                    actualFps = fps,
+                    frameTimeMs = frameMs
+                )
+            }
+            _telemetry.value = updated
             if (ping != null) {
                 updateSettings { it.copy(reducePingEnabled = true) }
-                showStatus("Ping: ${ping}ms • Jitter: ${jitter ?: 0}ms (${_telemetry.value.networkType})")
+                showStatus("Ping: ${ping}ms • Jitter: ${jitter ?: 0}ms (${updated.networkType})")
             } else {
                 showStatus("Network offline — connect Wi-Fi or Data")
             }
@@ -701,13 +775,20 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
                     lastFreedMb = result.freedMb
                 )
             }
-            _telemetry.value = hardware.readHardwareTelemetry(
-                cpuMode = settings.value.cpuMode,
-                lastPingMs = lastPingMs,
-                lastJitterMs = lastJitterMs,
-                actualFps = measuredFps,
-                frameTimeMs = measuredFrameMs
-            )
+            val mode = settings.value.cpuMode
+            val ping = lastPingMs
+            val jitter = lastJitterMs
+            val fps = measuredFps
+            val frameMs = measuredFrameMs
+            _telemetry.value = withContext(Dispatchers.Default) {
+                hardware.readHardwareTelemetry(
+                    cpuMode = mode,
+                    lastPingMs = ping,
+                    lastJitterMs = jitter,
+                    actualFps = fps,
+                    frameTimeMs = frameMs
+                )
+            }
             showStatus("Boosted! Freed ${result.freedMb} MB • Trimmed ${result.trimmedPackages} apps")
         }
     }
@@ -825,6 +906,10 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun startFloatingOverlayService() {
+        if (!networkMonitor.refreshNow()) {
+            showStatus("Internet connection required to use Turbo X")
+            return
+        }
         val ctx = getApplication<Application>()
         if (!hardware.checkPermissions().overlayGranted) {
             showStatus("Grant 'Allow floating windows' permission for system overlay")
@@ -848,6 +933,11 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun launchSelectedGame() {
+        if (!networkMonitor.refreshNow()) {
+            hardware.audioEnhancer.pulseHaptic(false)
+            showStatus("Internet connection required to launch Turbo X")
+            return
+        }
         val audit = refreshSecurityAudit()
         if (!audit.isSafeForGameplay) {
             hardware.audioEnhancer.pulseHaptic(false)
@@ -947,6 +1037,7 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
 
     override fun onCleared() {
         super.onCleared()
+        networkMonitor.unregister()
         hardware.performanceEngine.closeSession()
         hardware.audioEnhancer.releaseEffects()
     }

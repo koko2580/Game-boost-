@@ -14,10 +14,11 @@ class GameAudioEnhancer(private val context: Context) {
 
     private var equalizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
+    private var toneGenerator: ToneGenerator? = null
     private var savedNotificationVolume: Int? = null
 
     fun applyEqPreset(enabled: Boolean, preset: EqPreset): Boolean {
-        releaseEffects()
+        releaseAudioFxOnly()
         if (!enabled || preset == EqPreset.OFF) return true
         return runCatching {
             val eq = Equalizer(0, 0).apply { this.enabled = true }
@@ -30,11 +31,9 @@ class GameAudioEnhancer(private val context: Context) {
                 val targetLevel = when (preset) {
                     EqPreset.OFF -> mid
                     EqPreset.FPS_FOOTSTEPS -> {
-                        // Boost mid-high frequencies for footsteps & spatial cues
                         if (band >= bands / 2) (maxLevel * 0.75f).toInt() else (minLevel * 0.2f).toInt()
                     }
                     EqPreset.MOBA_CLARITY -> {
-                        // Boost vocal & skill callout midrange
                         if (band in 1 until (bands - 1)) (maxLevel * 0.65f).toInt() else mid
                     }
                     EqPreset.BASS_BOOST -> {
@@ -58,7 +57,9 @@ class GameAudioEnhancer(private val context: Context) {
 
     fun playTacticalTone() {
         runCatching {
-            val tg = ToneGenerator(AudioManager.STREAM_MUSIC, 35)
+            val tg = toneGenerator ?: ToneGenerator(AudioManager.STREAM_MUSIC, 35).also {
+                toneGenerator = it
+            }
             tg.startTone(ToneGenerator.TONE_PROP_ACK, 70)
         }
     }
@@ -106,10 +107,16 @@ class GameAudioEnhancer(private val context: Context) {
         }.getOrDefault(false)
     }
 
-    fun releaseEffects() {
+    private fun releaseAudioFxOnly() {
         runCatching { equalizer?.release() }
         runCatching { bassBoost?.release() }
         equalizer = null
         bassBoost = null
+    }
+
+    fun releaseEffects() {
+        releaseAudioFxOnly()
+        runCatching { toneGenerator?.release() }
+        toneGenerator = null
     }
 }

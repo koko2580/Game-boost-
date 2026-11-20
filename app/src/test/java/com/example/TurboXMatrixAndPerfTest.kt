@@ -1,0 +1,290 @@
+package com.example
+
+import android.app.ActivityManager
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.test.core.app.ApplicationProvider
+import com.example.data.CpuMode
+import com.example.data.GameAudioEnhancer
+import com.example.data.GameTurboSettings
+import com.example.data.HardwareTelemetry
+import com.example.data.InstalledAppInfo
+import com.example.data.PerformanceEngineStatus
+import com.example.data.PerformanceTuningEngine
+import com.example.data.PermissionStatus
+import com.example.data.SystemHardwareController
+import com.example.security.AppSecurityGuard
+import com.example.security.SecurityAuditReport
+import com.example.ui.components.NetworkGateOverlay
+import com.example.ui.screens.LauncherHomeScreen
+import com.example.ui.screens.PerformanceActions
+import com.example.ui.screens.SettingsScreen
+import com.example.ui.theme.TurboGameXTheme
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+class TurboXMatrixAndPerfTest {
+
+    @get:Rule
+    val composeTestRule = createComposeRule()
+
+    @Test
+    @Config(sdk = [24, 30, 36])
+    fun `hardware telemetry and performance engine operate across api 24 30 and 36`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val hardware = SystemHardwareController(context)
+        val telemetry = hardware.readHardwareTelemetry(
+            cpuMode = CpuMode.ACCELERATION,
+            lastPingMs = 28,
+            lastJitterMs = 4,
+            actualFps = 120,
+            frameTimeMs = 8.3f
+        )
+
+        assertTrue(telemetry.cpuCoreCount >= 1)
+        assertTrue(telemetry.cpuFreqMHz > 0)
+        assertEquals(120, telemetry.actualFps)
+        assertEquals(28, telemetry.pingMs)
+
+        val engine = PerformanceTuningEngine(context)
+        val status = engine.applyProfile(
+            settings = GameTurboSettings(
+                cpuMode = CpuMode.ACCELERATION,
+                frameRateTarget = 90,
+                fpsGameTarget = 120,
+                highPerfFpsControl = true,
+                reduceTouchLatency = true
+            ),
+            supportedRates = listOf(60, 90, 120)
+        )
+        assertEquals(120, status.effectiveTargetFps)
+        engine.closeSession()
+    }
+
+    @Test
+    @Config(sdk = [36])
+    fun `low ram profile downscales cached app icons to 72px while flagship caps at 96px`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val shadowAm = Shadows.shadowOf(am)
+        val shadowPm = Shadows.shadowOf(context.packageManager)
+
+        val oversized = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+        shadowPm.setApplicationIcon(context.packageName, BitmapDrawable(context.resources, oversized))
+
+        shadowAm.setIsLowRamDevice(true)
+        val lowRamHardware = SystemHardwareController(context)
+        assertNull(lowRamHardware.peekCachedAppIcon(context.packageName))
+        val lowRamIcon = lowRamHardware.loadAppIconAsync(context.packageName)
+        assertNotNull(lowRamIcon)
+        assertTrue(lowRamIcon!!.width <= 72)
+        assertTrue(lowRamIcon.height <= 72)
+        assertNotNull(lowRamHardware.peekCachedAppIcon(context.packageName))
+
+        shadowAm.setIsLowRamDevice(false)
+        val flagshipHardware = SystemHardwareController(context)
+        val flagshipIcon = flagshipHardware.loadAppIconAsync(context.packageName)
+        assertNotNull(flagshipIcon)
+        assertTrue(flagshipIcon!!.width <= 96)
+        assertTrue(flagshipIcon.height <= 96)
+    }
+
+    @Test
+    @Config(sdk = [36])
+    fun `audio enhancer reuses pooled tone generator and releases cleanly`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val enhancer = GameAudioEnhancer(context)
+        enhancer.playTacticalTone()
+        enhancer.playTacticalTone()
+        enhancer.releaseEffects()
+    }
+
+    @Test
+    @Config(sdk = [36])
+    fun `security guard enforces tamper proof vault and detects backward clock jump`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val guard = AppSecurityGuard(context)
+
+        val sealed = guard.sealTurboCredit(
+            expiresAtWallMs = System.currentTimeMillis() + 1_800_000L,
+            adsWatchedCount = 1
+        )
+        assertNotNull(sealed)
+
+        val unsealed = guard.unsealTurboCredit(sealed)
+        assertEquals(false, unsealed.tampered)
+        assertEquals(1, unsealed.adsWatchedCount)
+        assertTrue(unsealed.effectiveRemainingSeconds > 0L)
+
+        // Malformed format must always reject
+        val malformed = guard.unsealTurboCredit("invalid_token_without_dot")
+        assertEquals(true, malformed.tampered)
+        assertEquals(0L, malformed.effectiveRemainingSeconds)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w360dp-h800dp")
+    fun `compact phone renders cockpit and switches cleanly to telemetry tab`() {
+        val sampleGame = InstalledAppInfo("com.test.game", "Arena Legends", "2.4.1", false)
+
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                LauncherHomeScreen(
+                    settings = GameTurboSettings(
+                        addedGamePackages = setOf(sampleGame.packageName),
+                        selectedGamePackage = sampleGame.packageName
+                    ),
+                    telemetry = HardwareTelemetry(actualFps = 60, cpuFreqMHz = 1850, ramUsedPercent = 48),
+                    permissions = PermissionStatus(),
+                    addedGames = listOf(sampleGame),
+                    sessionHistory = emptyList(),
+                    remainingTurboSeconds = 3600L,
+                    statusMessage = null,
+                    isOverlayServiceRunning = false,
+                    peekAppIcon = { null },
+                    loadAppIconAsync = { null },
+                    onSelectGame = {},
+                    onStartPlay = {},
+                    onAddTurboTimeClick = {},
+                    onOpenOverlayPreview = {},
+                    onToggleOverlayService = {},
+                    onNavigateAddApps = {},
+                    onNavigateSettings = {},
+                    onNavigatePermissions = {},
+                    onBoostRam = {},
+                    onRunPingTest = {},
+                    onSelectCpuMode = {},
+                    onSelectWallpaperTheme = { _, _ -> },
+                    onDismissStatus = {}
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("start_play_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("tab_database").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("CPU Core Frequencies").assertIsDisplayed()
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w360dp-h800dp")
+    fun `offline network gate blocks interaction and wires settings plus retry actions`() {
+        var retriedCheck = false
+        var openedNetSettings = false
+
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                NetworkGateOverlay(
+                    onOpenNetworkSettings = { openedNetSettings = true },
+                    onRetryCheck = { retriedCheck = true }
+                )
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(120L)
+        composeTestRule.onNodeWithTag("open_network_settings_btn").performClick()
+        composeTestRule.onNodeWithTag("retry_network_check_btn").performClick()
+        assertTrue(openedNetSettings)
+        assertTrue(retriedCheck)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w900dp-h1200dp")
+    fun `expanded tablet renders two pane launcher dock and action cluster cleanly`() {
+        val sampleGame = InstalledAppInfo("com.test.tabletgame", "Cyber Racers", "1.9", false)
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                LauncherHomeScreen(
+                    settings = GameTurboSettings(
+                        addedGamePackages = setOf(sampleGame.packageName),
+                        selectedGamePackage = sampleGame.packageName
+                    ),
+                    telemetry = HardwareTelemetry(actualFps = 120, cpuFreqMHz = 2400, ramUsedPercent = 42),
+                    permissions = PermissionStatus(true, true, true, true),
+                    addedGames = listOf(sampleGame),
+                    sessionHistory = emptyList(),
+                    remainingTurboSeconds = 0L,
+                    statusMessage = null,
+                    isOverlayServiceRunning = false,
+                    peekAppIcon = { null },
+                    loadAppIconAsync = { null },
+                    onSelectGame = {},
+                    onStartPlay = {},
+                    onAddTurboTimeClick = {},
+                    onOpenOverlayPreview = {},
+                    onToggleOverlayService = {},
+                    onNavigateAddApps = {},
+                    onNavigateSettings = {},
+                    onNavigatePermissions = {},
+                    onBoostRam = {},
+                    onRunPingTest = {},
+                    onSelectCpuMode = {},
+                    onSelectWallpaperTheme = { _, _ -> },
+                    onDismissStatus = {}
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Add Games").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("start_play_button").assertIsDisplayed()
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w900dp-h1200dp")
+    fun `expanded tablet settings navigation rail switches to performance section cleanly`() {
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                SettingsScreen(
+                    settings = GameTurboSettings(),
+                    telemetry = HardwareTelemetry(),
+                    performanceStatus = PerformanceEngineStatus(),
+                    permissions = PermissionStatus(),
+                    securityAudit = SecurityAuditReport(),
+                    statusMessage = null,
+                    performanceActions = PerformanceActions(
+                        onSetFpsGameTarget = {},
+                        onSetFrameRateTarget = {},
+                        onSetSlidingFrictionIndex = {},
+                        onSetScrollingSensitivity = {},
+                        onSetEnhanceTouchSensitivity = {},
+                        onSetReduceTouchLatency = {},
+                        onSetIncreaseCpuPerformance = {},
+                        onSetIncreaseGpuPerformance = {},
+                        onSetForceGpuOpenGl = {},
+                        onSetEnableSkiaVulkan = {},
+                        onSetHighPerfFpsControl = {},
+                        onOpenPermissions = {},
+                        onOpenDeveloperOptions = {}
+                    ),
+                    onUpdateSettings = {},
+                    onBoostRam = {},
+                    onClearCache = {},
+                    onSelectWallpaperTheme = { _, _ -> },
+                    onOpenPermissions = {},
+                    onDismissStatus = {},
+                    onBack = {}
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("settings_cat_PERFORMANCE").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Optimize performance").assertIsDisplayed()
+    }
+}

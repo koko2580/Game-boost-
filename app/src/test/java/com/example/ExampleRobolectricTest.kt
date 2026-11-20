@@ -110,4 +110,12 @@ class ExampleRobolectricTest {
     assertEquals(false, sanitized.contains("request URL"))
     assertEquals(false, sanitized.contains("code 1"))
   }
+
+  @Test
+  fun `network gate policy rejects offline and unvalidated connections`() {
+    assertEquals(false, com.example.network.NetworkGatePolicy.isCapabilitiesOnline(null))
+    assertEquals(false, com.example.network.NetworkGatePolicy.hasValidatedInternet(false, false))
+    assertEquals(false, com.example.network.NetworkGatePolicy.hasValidatedInternet(true, false))
+    assertEquals(true, com.example.network.NetworkGatePolicy.hasValidatedInternet(true, true))
+  }
 }

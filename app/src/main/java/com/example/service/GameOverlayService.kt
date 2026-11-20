@@ -74,6 +74,7 @@ import com.example.data.GameTurboSettings
 import com.example.data.HardwareTelemetry
 import com.example.data.ScreenColorMode
 import com.example.data.SystemHardwareController
+import com.example.network.NetworkGateMonitor
 import com.example.ui.components.CrosshairOverlay
 import com.example.ui.components.GamePanelOverlayContent
 import com.example.ui.components.OverlayCallbacks
@@ -95,6 +96,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -114,6 +116,7 @@ class GameOverlayService : Service() {
     private lateinit var windowManager: WindowManager
     private lateinit var repo: GameTurboPreferencesRepository
     private lateinit var hardware: SystemHardwareController
+    private var networkMonitor: NetworkGateMonitor? = null
     private var controlView: ComposeView? = null
     private var hudPassThroughView: ComposeView? = null
     private var lifecycleOwner: ServiceLifecycleOwner? = null
@@ -169,6 +172,7 @@ class GameOverlayService : Service() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         repo = GameTurboPreferencesRepository(applicationContext)
         hardware = SystemHardwareController(applicationContext)
+        networkMonitor = NetworkGateMonitor(applicationContext)
 
         createNotificationChannel()
         val notification = buildNotification()
@@ -178,13 +182,18 @@ class GameOverlayService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
+        if (networkMonitor?.refreshNow() != true) {
+            stopSelf()
+            return
+        }
+
         attachOverlayWindows()
         Choreographer.getInstance().postFrameCallback(frameCallback)
         startTelemetryUpdates()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
+        if (intent?.action == ACTION_STOP || networkMonitor?.refreshNow() != true) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -196,6 +205,11 @@ class GameOverlayService : Service() {
         telemetryJob = serviceScope.launch {
             knownPackages = hardware.loadLaunchableApps().map { it.packageName }
             val (_, supportedRates) = hardware.readDisplayRefreshInfo()
+            launch {
+                networkMonitor?.isConnected?.collect { online ->
+                    if (!online) stopSelf()
+                }
+            }
             launch {
                 repo.settingsFlow.collect { s ->
                     latestSettings = s
@@ -215,15 +229,21 @@ class GameOverlayService : Service() {
                 }
             }
             while (true) {
-                val settings = repo.settingsFlow.first()
-                latestSettings = settings
-                telemetryFlow.value = hardware.readHardwareTelemetry(
-                    cpuMode = settings.cpuMode,
-                    lastPingMs = telemetryFlow.value.pingMs,
-                    lastJitterMs = telemetryFlow.value.pingJitterMs,
-                    actualFps = liveFps,
-                    frameTimeMs = liveFrameMs
-                )
+                val settings = latestSettings
+                val prevPing = telemetryFlow.value.pingMs
+                val prevJitter = telemetryFlow.value.pingJitterMs
+                val fps = liveFps
+                val frameMs = liveFrameMs
+                val snapshot = withContext(Dispatchers.Default) {
+                    hardware.readHardwareTelemetry(
+                        cpuMode = settings.cpuMode,
+                        lastPingMs = prevPing,
+                        lastJitterMs = prevJitter,
+                        actualFps = fps,
+                        frameTimeMs = frameMs
+                    )
+                }
+                telemetryFlow.value = snapshot
                 brightnessFlow.value = hardware.getBrightnessFraction()
                 volumeFlow.value = hardware.getVolumeFraction()
                 if (stopwatchRunningFlow.value) {
@@ -642,6 +662,7 @@ class GameOverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        networkMonitor?.unregister()
         Choreographer.getInstance().removeFrameCallback(frameCallback)
         telemetryJob?.cancel()
         serviceScope.cancel()

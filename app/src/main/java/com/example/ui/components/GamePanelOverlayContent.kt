@@ -199,32 +199,64 @@ fun GamePanelOverlayContent(
     var keyR1X by remember { mutableFloatStateOf(70f) }
     var keyR1Y by remember { mutableFloatStateOf(0f) }
 
-    val leftTools = listOf(
-        WingToolItem("ping", telemetry.pingMs?.let { "Ping ${it}ms" } ?: "Reduce ping", Icons.Rounded.NetworkCheck, settings.reducePingEnabled, callbacks.onPingTest),
-        WingToolItem("bg", "Background control", Icons.Rounded.Apps, settings.backgroundControlEnabled, callbacks.onToggleBackgroundControl),
-        WingToolItem("stopwatch", "Quick Stopwatch", Icons.Rounded.Timer, isStopwatchRunning || stopwatchSeconds > 0, callbacks.onToggleStopwatch),
-        WingToolItem("active_info", "Active info", Icons.Rounded.MonitorHeart, settings.activeInfoHud, callbacks.onToggleActiveInfo),
-        WingToolItem("effect_sound", if (settings.eqPreset == EqPreset.OFF) "Effect Sound" else settings.eqPreset.label, Icons.Rounded.GraphicEq, settings.effectSoundEnabled && settings.eqPreset != EqPreset.OFF, callbacks.onToggleEffectSound),
-        WingToolItem("screen_scale", "Screen scaling", Icons.Rounded.AspectRatio, settings.screenScalingWide, callbacks.onToggleScreenScaling),
-        WingToolItem("keymap", "KeyMap Trigger", Icons.Rounded.TouchApp, settings.keyMapTriggerVisible, callbacks.onToggleKeyMap),
-        WingToolItem("turbo_x", "Turbo X mode", Icons.Rounded.Speed, settings.turboXMode, callbacks.onToggleTurboX),
-        WingToolItem("data_panel", "Data Panel", Icons.Rounded.Memory, settings.dataPanelVisible, callbacks.onToggleDataPanel),
-        WingToolItem("crosshair", "Crosshair: ${settings.crosshairStyle.label}", Icons.Rounded.MyLocation, settings.crosshairStyle.ordinal > 0, callbacks.onCycleCrosshair),
-        WingToolItem("screen_color", "Color: ${settings.screenColorMode.label}", Icons.Rounded.ColorLens, settings.screenColorMode != ScreenColorMode.DEFAULT, callbacks.onCycleScreenColor),
-        WingToolItem("zoom", if (settings.screenZoomEnabled) "Zoom ${settings.zoomScale}x" else "Screen Zoom Tool", Icons.Rounded.ZoomIn, settings.screenZoomEnabled, callbacks.onToggleScreenZoom)
-    )
+    val leftTools = remember(
+        telemetry.pingMs,
+        settings.reducePingEnabled,
+        settings.backgroundControlEnabled,
+        isStopwatchRunning,
+        stopwatchSeconds,
+        settings.activeInfoHud,
+        settings.eqPreset,
+        settings.effectSoundEnabled,
+        settings.screenScalingWide,
+        settings.keyMapTriggerVisible,
+        settings.turboXMode,
+        settings.dataPanelVisible,
+        settings.crosshairStyle,
+        settings.screenColorMode,
+        settings.screenZoomEnabled,
+        settings.zoomScale,
+        callbacks
+    ) {
+        listOf(
+            WingToolItem("ping", telemetry.pingMs?.let { "Ping ${it}ms" } ?: "Reduce ping", Icons.Rounded.NetworkCheck, settings.reducePingEnabled, callbacks.onPingTest),
+            WingToolItem("bg", "Background control", Icons.Rounded.Apps, settings.backgroundControlEnabled, callbacks.onToggleBackgroundControl),
+            WingToolItem("stopwatch", "Quick Stopwatch", Icons.Rounded.Timer, isStopwatchRunning || stopwatchSeconds > 0, callbacks.onToggleStopwatch),
+            WingToolItem("active_info", "Active info", Icons.Rounded.MonitorHeart, settings.activeInfoHud, callbacks.onToggleActiveInfo),
+            WingToolItem("effect_sound", if (settings.eqPreset == EqPreset.OFF) "Effect Sound" else settings.eqPreset.label, Icons.Rounded.GraphicEq, settings.effectSoundEnabled && settings.eqPreset != EqPreset.OFF, callbacks.onToggleEffectSound),
+            WingToolItem("screen_scale", "Screen scaling", Icons.Rounded.AspectRatio, settings.screenScalingWide, callbacks.onToggleScreenScaling),
+            WingToolItem("keymap", "KeyMap Trigger", Icons.Rounded.TouchApp, settings.keyMapTriggerVisible, callbacks.onToggleKeyMap),
+            WingToolItem("turbo_x", "Turbo X mode", Icons.Rounded.Speed, settings.turboXMode, callbacks.onToggleTurboX),
+            WingToolItem("data_panel", "Data Panel", Icons.Rounded.Memory, settings.dataPanelVisible, callbacks.onToggleDataPanel),
+            WingToolItem("crosshair", "Crosshair: ${settings.crosshairStyle.label}", Icons.Rounded.MyLocation, settings.crosshairStyle.ordinal > 0, callbacks.onCycleCrosshair),
+            WingToolItem("screen_color", "Color: ${settings.screenColorMode.label}", Icons.Rounded.ColorLens, settings.screenColorMode != ScreenColorMode.DEFAULT, callbacks.onCycleScreenColor),
+            WingToolItem("zoom", if (settings.screenZoomEnabled) "Zoom ${settings.zoomScale}x" else "Screen Zoom Tool", Icons.Rounded.ZoomIn, settings.screenZoomEnabled, callbacks.onToggleScreenZoom)
+        )
+    }
 
-    val rightTiles = listOf(
-        RightTileItem("screenshot", "Screenshot", Icons.Rounded.Crop, null, false, callbacks.onScreenshotInfo),
-        RightTileItem("auto_rotate", "Auto Rotate", Icons.Rounded.ScreenRotation, null, autoRotate, callbacks.onToggleAutoRotate),
-        RightTileItem("no_notif", "No notifications", Icons.Rounded.NotificationsOff, null, settings.notificationMuteMode, callbacks.onToggleNoNotifications),
-        RightTileItem("auto_light", "AutoLight", Icons.Rounded.BrightnessAuto, null, autoBrightness, callbacks.onToggleAutoBrightness),
-        RightTileItem("frame_rate", "FrameRate", null, "${settings.frameRateTarget}Hz", true, callbacks.onCycleFrameRate),
-        RightTileItem("wifi", telemetry.wifiLinkMbps?.let { "${it}Mbps" } ?: "Wifi", Icons.Rounded.Wifi, null, telemetry.networkType != "Offline", callbacks.onOpenWifi),
-        RightTileItem("booster", "Booster", Icons.Rounded.RocketLaunch, null, settings.totalBoostCount > 0, callbacks.onBoostRam),
-        RightTileItem("dnd", "Do Not Disturb", Icons.Rounded.DarkMode, null, settings.dndMode, callbacks.onToggleDnd),
-        RightTileItem("clear_trash", "Clear trash", Icons.Rounded.CleaningServices, null, false, callbacks.onClearCache)
-    )
+    val rightTiles = remember(
+        autoRotate,
+        settings.notificationMuteMode,
+        autoBrightness,
+        settings.frameRateTarget,
+        telemetry.wifiLinkMbps,
+        telemetry.networkType,
+        settings.totalBoostCount,
+        settings.dndMode,
+        callbacks
+    ) {
+        listOf(
+            RightTileItem("screenshot", "Screenshot", Icons.Rounded.Crop, null, false, callbacks.onScreenshotInfo),
+            RightTileItem("auto_rotate", "Auto Rotate", Icons.Rounded.ScreenRotation, null, autoRotate, callbacks.onToggleAutoRotate),
+            RightTileItem("no_notif", "No notifications", Icons.Rounded.NotificationsOff, null, settings.notificationMuteMode, callbacks.onToggleNoNotifications),
+            RightTileItem("auto_light", "AutoLight", Icons.Rounded.BrightnessAuto, null, autoBrightness, callbacks.onToggleAutoBrightness),
+            RightTileItem("frame_rate", "FrameRate", null, "${settings.frameRateTarget}Hz", true, callbacks.onCycleFrameRate),
+            RightTileItem("wifi", telemetry.wifiLinkMbps?.let { "${it}Mbps" } ?: "Wifi", Icons.Rounded.Wifi, null, telemetry.networkType != "Offline", callbacks.onOpenWifi),
+            RightTileItem("booster", "Booster", Icons.Rounded.RocketLaunch, null, settings.totalBoostCount > 0, callbacks.onBoostRam),
+            RightTileItem("dnd", "Do Not Disturb", Icons.Rounded.DarkMode, null, settings.dndMode, callbacks.onToggleDnd),
+            RightTileItem("clear_trash", "Clear trash", Icons.Rounded.CleaningServices, null, false, callbacks.onClearCache)
+        )
+    }
 
     val screenTintColor = when (settings.screenColorMode) {
         ScreenColorMode.DEFAULT -> Color.Transparent
