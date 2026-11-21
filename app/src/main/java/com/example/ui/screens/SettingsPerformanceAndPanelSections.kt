@@ -667,7 +667,7 @@ private fun GamePanelStyleCard(
         GamePanelStyle.CLASSIC -> CyberAmber
         GamePanelStyle.NEW -> fallbackAccent
         GamePanelStyle.ROG_STYLE -> Color(0xFFFF1744)
-        GamePanelStyle.XIAOMI_STYLE -> Color(0xFF00A8FF)
+        GamePanelStyle.XIAOMI_STYLE -> Color(0xFFFFB703)
         GamePanelStyle.REDMAGIC_STYLE -> Color(0xFF00F0FF)
     }
     val cardScale by animateFloatAsState(
@@ -739,68 +739,79 @@ private fun GamePanelStyleCard(
                         drawCircle(fallbackAccent, radius = 10.dp.toPx(), center = Offset(w * 0.78f, h * 0.44f), style = Stroke(1.8.dp.toPx()))
                     }
                     GamePanelStyle.ROG_STYLE -> {
-                        val rogOutline = Path().apply {
-                            moveTo(w * 0.14f, 0f); lineTo(w * 0.96f, 0f); lineTo(w * 0.96f, h * 0.80f)
-                            lineTo(w * 0.84f, h); lineTo(w * 0.04f, h); lineTo(w * 0.04f, h * 0.20f); close()
-                        }
-                        drawPath(rogOutline, Color(0xFF131520))
-                        drawPath(rogOutline, Color(0xFFFF1744), style = Stroke(2.dp.toPx()))
-                        drawLine(
-                            brush = Brush.horizontalGradient(listOf(Color.Transparent, Color(0xFFFF1744), Color.Transparent)),
-                            start = Offset(w * 0.1f, h * 0.26f),
-                            end = Offset(w * 0.9f, h * 0.26f),
-                            strokeWidth = 2.5.dp.toPx()
+                        // Top sloped telemetry bevel + bottom angled GAME GENIE crimson deck
+                        drawRoundRect(
+                            color = Color(0xFF171B27),
+                            topLeft = Offset(w * 0.20f, h * 0.24f),
+                            size = Size(w * 0.60f, h * 0.14f),
+                            cornerRadius = CornerRadius(4.dp.toPx())
                         )
-                        // Triple X-MODE segmented strip
-                        drawRoundRect(Color(0xFF232838), Offset(w * 0.14f, h * 0.38f), Size(w * 0.22f, h * 0.16f), CornerRadius(3.dp.toPx()))
-                        drawRoundRect(Color(0xFF232838), Offset(w * 0.39f, h * 0.38f), Size(w * 0.22f, h * 0.16f), CornerRadius(3.dp.toPx()))
-                        drawRoundRect(Color(0xFFFF1744), Offset(w * 0.64f, h * 0.38f), Size(w * 0.22f, h * 0.16f), CornerRadius(3.dp.toPx()))
-                        drawRoundRect(Color(0xFF1E2232), Offset(w * 0.14f, h * 0.64f), Size(w * 0.72f, h * 0.22f), CornerRadius(4.dp.toPx()))
+                        val rogDock = Path().apply {
+                            moveTo(w * 0.10f, h * 0.42f); lineTo(w * 0.90f, h * 0.42f)
+                            lineTo(w * 0.97f, h * 0.94f); lineTo(w * 0.03f, h * 0.94f); close()
+                        }
+                        drawPath(rogDock, Color(0xFF131622))
+                        drawPath(rogDock, Color(0xFFFF1744), style = Stroke(1.8.dp.toPx()))
+                        drawRoundRect(Color(0xFF232838), Offset(w * 0.18f, h * 0.50f), Size(w * 0.19f, h * 0.14f), CornerRadius(3.dp.toPx()))
+                        drawRoundRect(Color(0xFF232838), Offset(w * 0.405f, h * 0.50f), Size(w * 0.19f, h * 0.14f), CornerRadius(3.dp.toPx()))
+                        drawRoundRect(Color(0xFFFF1744), Offset(w * 0.63f, h * 0.50f), Size(w * 0.19f, h * 0.14f), CornerRadius(3.dp.toPx()))
+                        drawRoundRect(Color(0xFF1E2232), Offset(w * 0.16f, h * 0.72f), Size(w * 0.68f, h * 0.14f), CornerRadius(3.dp.toPx()))
                     }
                     GamePanelStyle.XIAOMI_STYLE -> {
+                        // Left frosted app rail + GameTurbo sidebar + amber FPS waveform
                         drawRoundRect(
-                            color = Color(0xFF111D32),
-                            topLeft = Offset(w * 0.06f, 0f),
-                            size = Size(w * 0.88f, h),
-                            cornerRadius = CornerRadius(14.dp.toPx())
+                            color = Color(0xFF111319),
+                            topLeft = Offset(w * 0.04f, h * 0.04f),
+                            size = Size(w * 0.13f, h * 0.92f),
+                            cornerRadius = CornerRadius(7.dp.toPx())
                         )
                         drawRoundRect(
-                            brush = Brush.horizontalGradient(listOf(Color(0xFF00A8FF), Color(0xFF00E5C3))),
-                            topLeft = Offset(w * 0.12f, h * 0.12f),
-                            size = Size(w * 0.76f, h * 0.22f),
+                            color = Color(0xFF1A1D24),
+                            topLeft = Offset(w * 0.21f, h * 0.04f),
+                            size = Size(w * 0.54f, h * 0.92f),
                             cornerRadius = CornerRadius(10.dp.toPx())
+                        )
+                        val wave = Path().apply {
+                            moveTo(w * 0.26f, h * 0.36f)
+                            lineTo(w * 0.36f, h * 0.24f)
+                            lineTo(w * 0.45f, h * 0.34f)
+                            lineTo(w * 0.56f, h * 0.20f)
+                            lineTo(w * 0.69f, h * 0.22f)
+                        }
+                        drawPath(wave, Color(0xFFFFB703), style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
+                        drawRoundRect(
+                            color = Color(0xFFFFB703),
+                            topLeft = Offset(w * 0.26f, h * 0.46f),
+                            size = Size(w * 0.44f, h * 0.13f),
+                            cornerRadius = CornerRadius(4.dp.toPx())
                         )
                         for (c in 0 until 3) {
                             drawRoundRect(
-                                color = Color(0xFF1A2B48),
-                                topLeft = Offset(w * (0.12f + c * 0.27f), h * 0.44f),
-                                size = Size(w * 0.22f, h * 0.20f),
-                                cornerRadius = CornerRadius(6.dp.toPx())
-                            )
-                            drawRoundRect(
-                                color = if (c == 0) Color(0xFF00A8FF) else Color(0xFF1A2B48),
-                                topLeft = Offset(w * (0.12f + c * 0.27f), h * 0.70f),
-                                size = Size(w * 0.22f, h * 0.20f),
-                                cornerRadius = CornerRadius(6.dp.toPx())
+                                color = if (c == 0) Color(0xFFFFB703) else Color(0xFF282C37),
+                                topLeft = Offset(w * (0.26f + c * 0.155f), h * 0.66f),
+                                size = Size(w * 0.125f, h * 0.20f),
+                                cornerRadius = CornerRadius(4.dp.toPx())
                             )
                         }
                     }
                     GamePanelStyle.REDMAGIC_STYLE -> {
                         drawRoundRect(
                             color = Color(0xFF0C101B),
-                            topLeft = Offset(w * 0.05f, 0f),
-                            size = Size(w * 0.90f, h),
+                            topLeft = Offset(w * 0.04f, h * 0.04f),
+                            size = Size(w * 0.92f, h * 0.92f),
                             cornerRadius = CornerRadius(6.dp.toPx())
                         )
-                        drawLine(Color(0xFFFF1E42), Offset(w * 0.05f, 0f), Offset(w * 0.05f, h), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
-                        drawLine(Color(0xFF00F0FF), Offset(w * 0.95f, 0f), Offset(w * 0.95f, h), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
-                        // Mini turbine circle
-                        val c = Offset(w * 0.50f, h * 0.36f)
-                        val r = 13.dp.toPx()
-                        drawCircle(Color(0xFF00F0FF), radius = r, center = c, style = Stroke(1.8.dp.toPx()))
-                        drawCircle(Color(0xFFFF1E42), radius = 4.dp.toPx(), center = c)
-                        drawRoundRect(Color(0xFF191D2E), Offset(w * 0.14f, h * 0.66f), Size(w * 0.33f, h * 0.20f), CornerRadius(3.dp.toPx()))
-                        drawRoundRect(Color(0xFF0E222E), Offset(w * 0.53f, h * 0.66f), Size(w * 0.33f, h * 0.20f), CornerRadius(3.dp.toPx()))
+                        drawLine(Color(0xFFFF1E42), Offset(w * 0.04f, h * 0.04f), Offset(w * 0.04f, h * 0.96f), strokeWidth = 2.6.dp.toPx(), cap = StrokeCap.Round)
+                        drawLine(Color(0xFF00F0FF), Offset(w * 0.96f, h * 0.04f), Offset(w * 0.96f, h * 0.96f), strokeWidth = 2.6.dp.toPx(), cap = StrokeCap.Round)
+                        // Left & right side docks
+                        drawRoundRect(Color(0xFF161322), Offset(w * 0.09f, h * 0.16f), Size(w * 0.16f, h * 0.72f), CornerRadius(3.dp.toPx()))
+                        drawRoundRect(Color(0xFF0E1B28), Offset(w * 0.75f, h * 0.16f), Size(w * 0.16f, h * 0.72f), CornerRadius(3.dp.toPx()))
+                        // Dual center glowing CPU/GPU dials
+                        val r = 10.dp.toPx()
+                        drawCircle(Color(0xFFFF1E42), radius = r, center = Offset(w * 0.39f, h * 0.45f), style = Stroke(2.dp.toPx()))
+                        drawCircle(Color(0xFF00F0FF), radius = r, center = Offset(w * 0.61f, h * 0.45f), style = Stroke(2.dp.toPx()))
+                        drawRoundRect(Color(0xFF231320), Offset(w * 0.31f, h * 0.72f), Size(w * 0.17f, h * 0.13f), CornerRadius(3.dp.toPx()))
+                        drawRoundRect(Color(0xFF0D232E), Offset(w * 0.52f, h * 0.72f), Size(w * 0.17f, h * 0.13f), CornerRadius(3.dp.toPx()))
                     }
                 }
             }

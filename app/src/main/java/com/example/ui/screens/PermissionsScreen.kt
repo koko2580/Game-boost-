@@ -356,37 +356,42 @@ fun PermissionsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
+                        modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(11.dp))
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(heroAccent.copy(alpha = 0.16f))
-                                .border(1.dp, heroAccent.copy(alpha = 0.6f), RoundedCornerShape(11.dp)),
+                                .border(1.dp, heroAccent.copy(alpha = 0.6f), RoundedCornerShape(12.dp)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Rounded.Security, contentDescription = null, tint = heroAccent, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Rounded.Security, contentDescription = null, tint = heroAccent, modifier = Modifier.size(21.dp))
                         }
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "TURBO X AUTHORIZATION",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontFamily = RajdhaniFontFamily,
                                     fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.2.sp
+                                    letterSpacing = 1.sp
                                 ),
-                                color = TextPrimary
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "Initial Setup • Grant System Access",
+                                text = "Initial Setup • System Access",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = TextSecondary
+                                color = TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -699,102 +704,119 @@ private fun PermissionCard(item: PermissionUiItem) {
         label = "perm_pill_bg_${item.step.name}"
     )
 
-    Row(
+    Column(
         modifier = Modifier
             .testTag(item.testTag)
             .fillMaxWidth()
             .minimumInteractiveComponentSize()
             .clip(RoundedCornerShape(16.dp))
-            .background(CyberSlate)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(CyberSlate, Color(0xFF131B2C))
+                )
+            )
             .border(
                 width = if (item.granted) 1.2.dp else 1.dp,
                 color = if (item.granted) EmeraldBright.copy(alpha = 0.55f) else CyberBorder,
                 shape = RoundedCornerShape(16.dp)
             )
             .clickable { item.onRequest() }
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(cardAccent.copy(alpha = 0.14f))
-                .border(1.dp, cardAccent.copy(alpha = 0.45f), RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(
-                imageVector = item.icon,
-                contentDescription = null,
-                tint = cardAccent,
-                modifier = Modifier.size(22.dp)
-            )
-        }
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(cardAccent.copy(alpha = 0.14f))
+                    .border(1.dp, cardAccent.copy(alpha = 0.45f), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
             ) {
+                Icon(
+                    imageVector = item.icon,
+                    contentDescription = null,
+                    tint = cardAccent,
+                    modifier = Modifier.size(21.dp)
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF192338))
+                        .border(1.dp, ElectricCyan.copy(alpha = 0.28f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = item.badge.uppercase(),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = RajdhaniFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            letterSpacing = 0.7.sp
+                        ),
+                        color = ElectricCyan,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Text(
                     text = item.title,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontFamily = RajdhaniFontFamily,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
                     ),
                     color = TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Box(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(Color(0xFF1A2234))
-                        .padding(horizontal = 7.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = item.badge,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = ElectricCyan
-                    )
-                }
             }
-            Text(
-                text = item.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(pillBg)
+                    .border(1.dp, cardAccent.copy(alpha = 0.65f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 11.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = if (item.granted) "DONE" else "ALLOW",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.6.sp
+                    ),
+                    color = if (item.granted) EmeraldBright else Color.White,
+                    maxLines = 1,
+                    softWrap = false
+                )
+                Icon(
+                    imageVector = if (item.granted) Icons.Rounded.Check else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = if (item.granted) "Granted" else "Grant ${item.title}",
+                    tint = if (item.granted) EmeraldBright else Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
 
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .background(pillBg)
-                .border(1.dp, cardAccent.copy(alpha = 0.65f), RoundedCornerShape(10.dp))
-                .padding(horizontal = 10.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Text(
-                text = if (item.granted) "DONE" else "ALLOW",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = RajdhaniFontFamily,
-                    fontWeight = FontWeight.Bold
-                ),
-                color = if (item.granted) EmeraldBright else Color.White
-            )
-            Icon(
-                imageVector = if (item.granted) Icons.Rounded.Check else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                contentDescription = if (item.granted) "Granted" else "Grant ${item.title}",
-                tint = if (item.granted) EmeraldBright else Color.White,
-                modifier = Modifier.size(16.dp)
-            )
-        }
+        Text(
+            text = item.description,
+            style = MaterialTheme.typography.bodySmall.copy(lineHeight = 17.sp),
+            color = TextSecondary,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }

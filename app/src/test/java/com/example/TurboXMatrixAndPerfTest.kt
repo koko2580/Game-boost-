@@ -361,6 +361,7 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.onNodeWithTag("overlay_ram_boost_pill").assertIsDisplayed().performClick()
         composeTestRule.onNodeWithTag("overlay_g_handle").assertIsDisplayed().performClick()
         composeTestRule.onNodeWithText("X-MODE").assertIsDisplayed()
+        composeTestRule.onNodeWithText("/// GAME GENIE").assertIsDisplayed()
         assertTrue(boosted)
         assertTrue(minimized)
     }
@@ -393,6 +394,7 @@ class TurboXMatrixAndPerfTest {
         }
         composeTestRule.mainClock.advanceTimeBy(250L)
         composeTestRule.onNodeWithTag("overlay_xiaomi_root").assertIsDisplayed()
+        composeTestRule.onNodeWithText("GAMETURBO").assertIsDisplayed()
         composeTestRule.onNodeWithTag("overlay_cpu_mode_pill").assertIsDisplayed().performClick()
         composeTestRule.onNodeWithTag("overlay_ram_boost_pill").assertIsDisplayed()
         assertEquals(CpuMode.ACCELERATION, selectedMode)
@@ -400,7 +402,7 @@ class TurboXMatrixAndPerfTest {
 
     @Test
     @Config(sdk = [36], qualifiers = "w840dp-h360dp")
-    fun `landscape RedMagic Cyber overlay renders 3-wing cooling turbine HUD and energy faders`() {
+    fun `landscape RedMagic Cyber overlay renders dual arc dials and energy faders`() {
         var boosted = false
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.setContent {
@@ -424,6 +426,8 @@ class TurboXMatrixAndPerfTest {
         }
         composeTestRule.mainClock.advanceTimeBy(250L)
         composeTestRule.onNodeWithTag("overlay_redmagic_root").assertIsDisplayed()
+        composeTestRule.onNodeWithText("GAMESPACE").assertIsDisplayed()
+        composeTestRule.onNodeWithText("DIABLO TURBO").assertIsDisplayed()
         composeTestRule.onNodeWithText("ENERGY FADER").assertIsDisplayed()
         composeTestRule.onNodeWithTag("overlay_ram_boost_pill").assertIsDisplayed().performClick()
         assertTrue(boosted)
@@ -499,6 +503,86 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.onNodeWithText("ALL SYSTEMS ARMED").assertIsDisplayed()
         composeTestRule.onNodeWithTag("grant_all_permissions_btn").assertIsDisplayed().performClick()
         assertTrue(completed)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w360dp-h800dp")
+    fun `compact phone permissions badges render single-line without vertical wrapping`() {
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                PermissionsScreen(
+                    permissions = PermissionStatus(
+                        dndGranted = false,
+                        overlayGranted = false,
+                        writeSettingsGranted = false,
+                        usageStatsGranted = false,
+                        notificationsGranted = false
+                    ),
+                    onRefreshPermissions = {},
+                    onRequestDnd = {},
+                    onRequestOverlay = {},
+                    onRequestWriteSettings = {},
+                    onRequestUsageStats = {},
+                    onBack = {},
+                    isOnboardingMode = true,
+                    onCompleteOnboarding = {}
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("perm_write_settings_card").performScrollTo().assertIsDisplayed()
+        val displayTouchBadge = composeTestRule.onNodeWithText("DISPLAY & TOUCH", useUnmergedTree = true)
+        displayTouchBadge.assertIsDisplayed()
+        val bounds = displayTouchBadge.fetchSemanticsNode().boundsInRoot
+        // A single-line 10sp badge must stay compact vertically (well below multi-line vertical wrapping)
+        assertTrue("Badge wrapped vertically! height=${bounds.height}", bounds.height < 60f)
+        composeTestRule.onNodeWithTag("perm_usage_stats_card").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("SMART LAUNCH", useUnmergedTree = true).assertIsDisplayed()
+        composeTestRule.onNodeWithTag("perm_notifications_card").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("FOREGROUND", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w360dp-h800dp")
+    fun `portrait narrow overlays render all three Real esports styles cleanly`() {
+        val activeStyle = androidx.compose.runtime.mutableStateOf(GamePanelStyle.ROG_STYLE)
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                GamePanelOverlayContent(
+                    settings = GameTurboSettings(
+                        gamePanelStyle = activeStyle.value,
+                        lowRamOverlayMode = true
+                    ),
+                    telemetry = HardwareTelemetry(actualFps = 120, cpuFreqMHz = 2900, ramUsedPercent = 42),
+                    brightnessFraction = 0.7f,
+                    volumeFraction = 0.6f,
+                    autoBrightness = false,
+                    autoRotate = false,
+                    stopwatchSeconds = 0L,
+                    isStopwatchRunning = false,
+                    statusMessage = null,
+                    callbacks = testOverlayCallbacks()
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("overlay_rog_root").assertIsDisplayed()
+        composeTestRule.onNodeWithText("GAME GENIE").assertIsDisplayed()
+
+        composeTestRule.runOnUiThread { activeStyle.value = GamePanelStyle.XIAOMI_STYLE }
+        composeTestRule.waitForIdle()
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("overlay_xiaomi_root").assertIsDisplayed()
+        composeTestRule.onNodeWithText("GAMETURBO").assertIsDisplayed()
+
+        composeTestRule.runOnUiThread { activeStyle.value = GamePanelStyle.REDMAGIC_STYLE }
+        composeTestRule.waitForIdle()
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("overlay_redmagic_root").assertIsDisplayed()
+        composeTestRule.onNodeWithText("GAMESPACE").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("overlay_ram_boost_pill").assertIsDisplayed()
     }
 
     private fun emptyPerformanceActions() = PerformanceActions(

@@ -30,9 +30,9 @@ enum class ControlPanelLayout(val title: String, val subtitle: String) {
 enum class GamePanelStyle(val label: String, val tagline: String) {
     CLASSIC("Classic", "Balanced dual-wing HUD"),
     NEW("Angled Cyber", "Sloped cyber glass wings"),
-    ROG_STYLE("ROG Armoury", "Mecha crimson diagonal HUD"),
-    XIAOMI_STYLE("Xiaomi Hyper", "Vibrant HyperOS floating deck"),
-    REDMAGIC_STYLE("RedMagic Cyber", "Neon dual-rail cooling HUD")
+    ROG_STYLE("Real ROG Style", "Bottom Game Genie • X-Mode HUD"),
+    XIAOMI_STYLE("Real Xiaomi Style", "Left rail • Gold FPS graph & tools"),
+    REDMAGIC_STYLE("Real RedMagic Style", "GameSpace • Dual arcs & wings")
 }
 
 enum class WallpaperTheme(val label: String) {

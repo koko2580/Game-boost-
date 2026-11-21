@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -11,6 +12,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,6 +39,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -46,6 +55,7 @@ import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
@@ -557,6 +567,184 @@ internal fun SpinningCoolingFanGlyph(
             color = Color.White,
             radius = r * 0.13f,
             center = Offset(cx, cy)
+        )
+    }
+}
+
+@Composable
+internal fun StyleTabStrip(
+    tabs: List<String>,
+    selectedIndex: Int,
+    accent: Color,
+    shape: Shape,
+    onSelect: (Int) -> Unit,
+    selectedTextColor: Color = Color.White,
+    containerColor: Color = CyberSlate.copy(alpha = 0.85f)
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(containerColor)
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        tabs.forEachIndexed { idx, label ->
+            val selected = selectedIndex == idx
+            val bg by animateColorAsState(
+                targetValue = if (selected) accent else Color.Transparent,
+                animationSpec = tween(200),
+                label = "style_tab_bg_$idx"
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(shape)
+                    .background(bg)
+                    .clickable { onSelect(idx) }
+                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = if (selected) selectedTextColor else TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun AnimatedStyleGrid(
+    tabIndex: Int,
+    leftTools: List<WingToolItem>,
+    rightTiles: List<RightTileItem>,
+    accent: Color,
+    inactiveCard: Color,
+    shape: Shape,
+    columns: Int,
+    cardHeight: Dp,
+    modifier: Modifier = Modifier
+) {
+    AnimatedContent(
+        targetState = tabIndex,
+        transitionSpec = {
+            val dir = if (targetState > initialState) 1 else -1
+            (slideInHorizontally(
+                animationSpec = tween(220, easing = FastOutSlowInEasing),
+                initialOffsetX = { dir * (it / 5) }
+            ) + fadeIn(tween(180))) togetherWith
+                (slideOutHorizontally(
+                    animationSpec = tween(180),
+                    targetOffsetX = { -dir * (it / 6) }
+                ) + fadeOut(tween(140)))
+        },
+        label = "esports_grid_switch",
+        modifier = modifier
+    ) { tab ->
+        if (tab == 0) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(columns),
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(leftTools, key = { it.id }) { tool ->
+                    EsportsToolCard(
+                        label = tool.label,
+                        icon = tool.icon,
+                        badgeText = null,
+                        active = tool.isActive,
+                        activeAccent = accent,
+                        inactiveContainer = inactiveCard,
+                        shape = shape,
+                        cardHeight = cardHeight,
+                        onClick = tool.onClick
+                    )
+                }
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(columns),
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(rightTiles, key = { it.id }) { tile ->
+                    EsportsToolCard(
+                        label = tile.label,
+                        icon = tile.icon,
+                        badgeText = tile.customBadgeText,
+                        active = tile.isActive,
+                        activeAccent = accent,
+                        inactiveContainer = inactiveCard,
+                        shape = shape,
+                        cardHeight = cardHeight,
+                        onClick = tile.onClick
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun MiniTelemetryTag(
+    text: String,
+    accent: Color,
+    shape: Shape,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null
+) {
+    Row(
+        modifier = modifier
+            .clip(shape)
+            .background(accent.copy(alpha = 0.14f))
+            .border(1.dp, accent.copy(alpha = 0.45f), shape)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(13.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = RajdhaniFontFamily, fontWeight = FontWeight.Bold),
+            color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+internal fun OverlayStatusPill(
+    message: String,
+    accent: Color,
+    shape: Shape
+) {
+    Surface(
+        color = Color(0xFF131826),
+        shape = shape,
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, accent.copy(alpha = 0.7f), shape)
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.labelMedium,
+            color = accent,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

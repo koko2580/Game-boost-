@@ -259,10 +259,14 @@ fun GamePanelOverlayContent(
     }
     val cpuDisplayUnit = if (settings.cpuUnitFormat == CpuUnitFormat.GHZ) "GHz" else "MHz"
 
+    val isRedesignedEsportsStyle = settings.gamePanelStyle == GamePanelStyle.ROG_STYLE ||
+        settings.gamePanelStyle == GamePanelStyle.XIAOMI_STYLE ||
+        settings.gamePanelStyle == GamePanelStyle.REDMAGIC_STYLE
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.72f))
+            .background(Color.Black.copy(alpha = if (isRedesignedEsportsStyle) 0.50f else 0.72f))
             .background(screenTintColor)
     ) {
         val isWideLandscape = maxWidth >= 620.dp
@@ -354,13 +358,19 @@ fun GamePanelOverlayContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    val t = entranceProgress.value.coerceIn(0f, 1f)
-                    val s = 0.94f + (0.06f * t)
-                    scaleX = s
-                    scaleY = s
-                    alpha = 0.45f + (0.55f * t)
-                }
+                .then(
+                    if (isRedesignedEsportsStyle) {
+                        Modifier
+                    } else {
+                        Modifier.graphicsLayer {
+                            val t = entranceProgress.value.coerceIn(0f, 1f)
+                            val s = 0.94f + (0.06f * t)
+                            scaleX = s
+                            scaleY = s
+                            alpha = 0.45f + (0.55f * t)
+                        }
+                    }
+                )
         ) {
             when (settings.gamePanelStyle) {
                 GamePanelStyle.ROG_STYLE -> {
