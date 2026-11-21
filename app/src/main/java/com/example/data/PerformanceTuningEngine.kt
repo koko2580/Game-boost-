@@ -38,9 +38,27 @@ data class GpuPipelineInfo(
 data class PerformanceEngineStatus(
     val effectiveTargetFps: Int = 60,
     val appliedDisplayModeHz: Int = 60,
+    val adpfSupported: Boolean = false,
     val adpfHintActive: Boolean = false,
     val adpfTargetDurationMs: Float = 16.6f,
+    val framePacingActive: Boolean = true,
+    val framePacingJitterMs: Float = 0.0f,
+    val minimalPostProcessingActive: Boolean = false,
+    val disablePowerSavingActive: Boolean = true,
+    val batterySaverActive: Boolean = false,
+    val ignoringBatteryOptimizations: Boolean = false,
+    val smartBackgroundActive: Boolean = true,
+    val backgroundProcessCount: Int = 0,
+    val backgroundProcessSampleNames: List<String> = emptyList(),
+    val displayResolutionOptActive: Boolean = false,
+    val currentResolutionLabel: String = "1080×2400 @ 60Hz",
+    val supportedResolutionModes: List<DisplayModeOption> = emptyList(),
+    val appliedDisplayModeId: Int = 0,
+    val densityDpi: Int = 420,
+    val sustainedPerformanceSupported: Boolean = false,
     val sustainedPerformanceActive: Boolean = false,
+    val autoPerfActive: Boolean = false,
+    val autoProfileRecommendation: String = "Manual Control",
     val gameStateActive: Boolean = false,
     val unbufferedTouchActive: Boolean = false,
     val systemPointerSpeedApplied: Boolean = false,
@@ -58,15 +76,29 @@ class PerformanceTuningEngine(private val context: Context) {
     private val _status = MutableStateFlow(PerformanceEngineStatus())
     val status: StateFlow<PerformanceEngineStatus> = _status.asStateFlow()
 
+    private val inspector = PerformanceSystemInspector(context)
+
     @Volatile
     private var cachedGpuInfo: GpuPipelineInfo? = null
 
     private var adpfSession: Any? = null // PerformanceHintManager.Session (API 31+)
     private var lastAdpfTargetNs: Long = 0L
     private var lastAdpfReportMs: Long = 0L
+    private var previousDeltaNs: Long = 0L
+    @Volatile
+    private var smoothedJitterMs: Float = 0.0f
 
     @Volatile
     private var unbufferedTouchEnabled: Boolean = false
+
+    @Volatile
+    private var threeFingerGuardEnabled: Boolean = false
+
+    fun isThreeFingerGuardEnabled(): Boolean = threeFingerGuardEnabled
+
+    fun shouldBlockMultiFingerGesture(pointerCount: Int, guardEnabled: Boolean = threeFingerGuardEnabled): Boolean {
+        return guardEnabled && pointerCount >= 3
+    }
 
     fun queryGpuPipelineInfo(): GpuPipelineInfo {
         cachedGpuInfo?.let { return it }
@@ -216,7 +248,9 @@ class PerformanceTuningEngine(private val context: Context) {
         settings: GameTurboSettings,
         supportedRates: List<Int>,
         activity: Activity? = null,
-        isInGameLaunch: Boolean = false
+        isInGameLaunch: Boolean = false,
+        batteryPercent: Int = 80,
+        isCharging: Boolean = false
     ): PerformanceEngineStatus {
         val gpuInfo = queryGpuPipelineInfo()
         val effectiveTargetFps = computeEffectiveTargetFps(settings, supportedRates)
@@ -224,18 +258,23 @@ class PerformanceTuningEngine(private val context: Context) {
         val frictionFactor = computeFrictionFactor(settings)
         val unbuffered = settings.enhanceTouchSensitivity || settings.reduceTouchLatency
         unbufferedTouchEnabled = unbuffered
+        threeFingerGuardEnabled = settings.disableThreeFingerScreenshot
 
         // 1. Apply System Pointer Speed when WRITE_SETTINGS is granted
         val targetPointerSpeed = (settings.scrollingSensitivity + if (settings.enhanceTouchSensitivity) 2 else 0)
             .coerceIn(-7, 7)
         val pointerApplied = applySystemPointerSpeed(targetPointerSpeed)
 
-        // 2. Boost calling thread priority for low touch latency / CPU perf / high FPS
+        // 2. Boost calling thread priority for low touch latency / CPU perf / high FPS / Frame pacing
         val priorityBoosted = applyThreadPriority(
-            urgent = settings.reduceTouchLatency || settings.increaseCpuPerformance || settings.highPerfFpsControl
+            urgent = settings.reduceTouchLatency ||
+                settings.increaseCpuPerformance ||
+                settings.highPerfFpsControl ||
+                settings.optimizeFramePacing
         )
 
-        // 3. Configure ADPF PerformanceHintManager session (API 31+)
+        // 3. Configure ADPF PerformanceHintManager session (API 31+, respects explicit enableAdpfHints toggle)
+        val adpfSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !isRobolectric()
         val (adpfActive, targetDurationMs) = updateAdpfHintSession(settings, effectiveTargetFps)
 
         // 4. Signal Android GameManager / GameState (API 33+)
@@ -243,16 +282,43 @@ class PerformanceTuningEngine(private val context: Context) {
             boostActive = isInGameLaunch ||
                 settings.increaseCpuPerformance ||
                 settings.increaseGpuPerformance ||
-                settings.highPerfFpsControl
+                settings.highPerfFpsControl ||
+                settings.optimizeFramePacing
         )
 
-        // 5. Apply Activity Window flags, Display Mode Refresh Rate, Sustained Mode & Unbuffered Touch
+        // 5. Inspect Power, Background Activity, Display Modes & Sustained Support
+        val (batterySaverActive, ignoringBatteryOpt) = inspector.detectBatterySaverState()
+        val sustainedSupported = inspector.isSustainedPerformanceSupported()
+        val (bgCount, bgSamples) = if (settings.smartBackgroundControl) {
+            inspector.detectBackgroundActivitySummary(settings.addedGamePackages)
+        } else {
+            0 to emptyList()
+        }
+        val (resolutionLabel, supportedModes, densityDpi) = inspector.detectDisplayResolutionInfo(activity)
+        val thermalLabel = readThermalStatusLabel()
+        val autoDecision = if (settings.autoPerformanceOptimization) {
+            inspector.evaluateAutoPerformance(
+                thermalLabel = thermalLabel,
+                batterySaverActive = batterySaverActive,
+                batteryPercent = batteryPercent,
+                isCharging = isCharging,
+                sustainedSupported = sustainedSupported
+            ).reasonLabel
+        } else {
+            "Manual Control"
+        }
+
+        // 6. Apply Activity Window flags, Display Mode / Resolution Optimizer, Frame Pacing, Sustained Mode & Unbuffered Touch
         var appliedHz = effectiveTargetFps
-        var sustainedActive = false
+        var sustainedActive = settings.sustainedPerformanceMode && sustainedSupported
+        var minimalPostProc = false
+        var appliedModeId = settings.preferredDisplayModeId
         if (activity != null) {
             val windowResult = applyToActivityWindow(activity, settings, effectiveTargetFps, gpuInfo)
-            appliedHz = windowResult.first
-            sustainedActive = windowResult.second
+            appliedHz = windowResult.appliedHz
+            sustainedActive = windowResult.sustainedActive
+            minimalPostProc = windowResult.minimalPostProcessing
+            appliedModeId = windowResult.appliedModeId
         }
 
         val gpuLabel = when {
@@ -265,9 +331,27 @@ class PerformanceTuningEngine(private val context: Context) {
         val nextStatus = PerformanceEngineStatus(
             effectiveTargetFps = effectiveTargetFps,
             appliedDisplayModeHz = appliedHz,
+            adpfSupported = adpfSupported,
             adpfHintActive = adpfActive,
             adpfTargetDurationMs = targetDurationMs,
+            framePacingActive = settings.optimizeFramePacing,
+            framePacingJitterMs = smoothedJitterMs,
+            minimalPostProcessingActive = minimalPostProc,
+            disablePowerSavingActive = settings.disablePowerSavingInGame,
+            batterySaverActive = batterySaverActive,
+            ignoringBatteryOptimizations = ignoringBatteryOpt,
+            smartBackgroundActive = settings.smartBackgroundControl,
+            backgroundProcessCount = bgCount,
+            backgroundProcessSampleNames = bgSamples,
+            displayResolutionOptActive = settings.displayResolutionOpt,
+            currentResolutionLabel = resolutionLabel,
+            supportedResolutionModes = supportedModes,
+            appliedDisplayModeId = appliedModeId,
+            densityDpi = densityDpi,
+            sustainedPerformanceSupported = sustainedSupported,
             sustainedPerformanceActive = sustainedActive,
+            autoPerfActive = settings.autoPerformanceOptimization,
+            autoProfileRecommendation = autoDecision,
             gameStateActive = gameStateActive,
             unbufferedTouchActive = unbuffered,
             systemPointerSpeedApplied = pointerApplied,
@@ -275,13 +359,43 @@ class PerformanceTuningEngine(private val context: Context) {
             scrollMultiplier = scrollMult,
             frictionFactor = frictionFactor,
             activeGpuPipelineLabel = gpuLabel,
-            thermalStatusLabel = readThermalStatusLabel(),
+            thermalStatusLabel = thermalLabel,
             threadPriorityBoosted = priorityBoosted,
             gpuInfo = gpuInfo
         )
         _status.value = nextStatus
         return nextStatus
     }
+
+    fun evaluateAutoPerformance(
+        batteryPercent: Int,
+        isCharging: Boolean
+    ): AutoPerfDecision {
+        val thermal = readThermalStatusLabel()
+        val (batterySaver, _) = inspector.detectBatterySaverState()
+        val sustainedSupported = inspector.isSustainedPerformanceSupported()
+        return inspector.evaluateAutoPerformance(
+            thermalLabel = thermal,
+            batterySaverActive = batterySaver,
+            batteryPercent = batteryPercent,
+            isCharging = isCharging,
+            sustainedSupported = sustainedSupported
+        )
+    }
+
+    fun isBatterySaverActive(): Boolean = inspector.detectBatterySaverState().first
+
+    fun detectBatterySaverState(): Pair<Boolean, Boolean> = inspector.detectBatterySaverState()
+
+    fun isSustainedPerformanceSupported(): Boolean = inspector.isSustainedPerformanceSupported()
+
+    fun evaluateMemoryPressure(usedPercent: Int): Pair<String, String> = inspector.evaluateMemoryPressure(usedPercent)
+
+    fun openPowerSaverSettings(): Boolean = inspector.openPowerSaverSettings()
+
+    fun openAppManagementSettings(): Boolean = inspector.openAppManagementSettings()
+
+    fun openDisplaySettings(): Boolean = inspector.openDisplaySettings()
 
     private fun applySystemPointerSpeed(pointerSpeed: Int): Boolean {
         if (!Settings.System.canWrite(context)) return false
@@ -323,6 +437,11 @@ class PerformanceTuningEngine(private val context: Context) {
         }
         val targetMs = targetNs / 1_000_000f
 
+        if (!settings.enableAdpfHints) {
+            closeSession()
+            return false to targetMs
+        }
+
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || isRobolectric()) {
             return false to targetMs
         }
@@ -349,7 +468,13 @@ class PerformanceTuningEngine(private val context: Context) {
     }
 
     fun reportFrameDurationNanos(workDurationNanos: Long, settings: GameTurboSettings) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || isRobolectric()) return
+        if (previousDeltaNs > 0L) {
+            val jitterMs = abs(workDurationNanos - previousDeltaNs) / 1_000_000f
+            smoothedJitterMs = (smoothedJitterMs * 0.85f + jitterMs * 0.15f).coerceIn(0f, 50f)
+        }
+        previousDeltaNs = workDurationNanos
+
+        if (!settings.enableAdpfHints || Build.VERSION.SDK_INT < Build.VERSION_CODES.S || isRobolectric()) return
         val session = adpfSession as? PerformanceHintManager.Session ?: return
         val nowMs = android.os.SystemClock.elapsedRealtime()
         if (nowMs - lastAdpfReportMs < 350L) return
@@ -357,7 +482,8 @@ class PerformanceTuningEngine(private val context: Context) {
 
         val boostActive = settings.increaseCpuPerformance ||
             settings.increaseGpuPerformance ||
-            settings.highPerfFpsControl
+            settings.highPerfFpsControl ||
+            settings.optimizeFramePacing
         val reportedNs = if (boostActive) {
             // Report slight headroom demand when performance boost is engaged
             maxOf(workDurationNanos, (lastAdpfTargetNs * 1.05f).toLong()).coerceIn(1_000_000L, 50_000_000L)
@@ -381,14 +507,23 @@ class PerformanceTuningEngine(private val context: Context) {
         }.getOrDefault(false)
     }
 
+    private data class WindowApplyResult(
+        val appliedHz: Int,
+        val sustainedActive: Boolean,
+        val minimalPostProcessing: Boolean,
+        val appliedModeId: Int
+    )
+
     private fun applyToActivityWindow(
         activity: Activity,
         settings: GameTurboSettings,
         targetHz: Int,
         gpuInfo: GpuPipelineInfo
-    ): Pair<Int, Boolean> {
+    ): WindowApplyResult {
         var appliedHz = targetHz
         var sustainedApplied = false
+        var minimalPostProc = false
+        var appliedModeId = settings.preferredDisplayModeId
 
         runCatching {
             val window = activity.window
@@ -396,12 +531,13 @@ class PerformanceTuningEngine(private val context: Context) {
             val forceHwAccel = settings.forceGpuOpenGl ||
                 settings.enableSkiaVulkan ||
                 settings.increaseGpuPerformance ||
-                settings.highPerfFpsControl
+                settings.highPerfFpsControl ||
+                settings.optimizeFramePacing
             if (forceHwAccel) {
                 window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
             }
 
-            // 2. Display mode & preferred refresh rate
+            // 2. Display mode resolution & preferred refresh rate (Frame Pacing + Display Resolution Optimizer)
             val display: Display? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 activity.display
             } else {
@@ -411,24 +547,43 @@ class PerformanceTuningEngine(private val context: Context) {
             val params = window.attributes
             var attrsChanged = false
             if (display != null) {
-                val bestMode = display.supportedModes.minByOrNull { abs(it.refreshRate - targetHz.toFloat()) }
+                val explicitMode = if (settings.displayResolutionOpt && settings.preferredDisplayModeId > 0) {
+                    display.supportedModes.firstOrNull { it.modeId == settings.preferredDisplayModeId }
+                } else {
+                    null
+                }
+                val bestMode = explicitMode ?: display.supportedModes.minByOrNull { abs(it.refreshRate - targetHz.toFloat()) }
                 if (bestMode != null) {
                     appliedHz = bestMode.refreshRate.toInt()
+                    appliedModeId = bestMode.modeId
                     if (params.preferredDisplayModeId != bestMode.modeId) {
                         params.preferredDisplayModeId = bestMode.modeId
                         attrsChanged = true
                     }
                 }
             }
-            if (abs(params.preferredRefreshRate - targetHz.toFloat()) > 0.5f) {
-                params.preferredRefreshRate = targetHz.toFloat()
+            val resolvedRefresh = if (settings.displayResolutionOpt && settings.preferredDisplayModeId > 0) {
+                appliedHz.toFloat()
+            } else {
+                targetHz.toFloat()
+            }
+            if (abs(params.preferredRefreshRate - resolvedRefresh) > 0.5f) {
+                params.preferredRefreshRate = resolvedRefresh
                 attrsChanged = true
             }
             if (attrsChanged) {
                 window.attributes = params
             }
 
-            // 3. Wide Color Gamut when GPU performance boost is enabled (API 26+)
+            // 3. Minimal Post-Processing for low-jitter Frame Pacing (API 30+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                runCatching {
+                    window.setPreferMinimalPostProcessing(settings.optimizeFramePacing)
+                    minimalPostProc = settings.optimizeFramePacing
+                }
+            }
+
+            // 4. Wide Color Gamut when GPU performance boost is enabled (API 26+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val wideGamutSupported = activity.resources.configuration.isScreenWideColorGamut
                 val desiredColorMode = if (settings.increaseGpuPerformance && wideGamutSupported) {
@@ -441,20 +596,18 @@ class PerformanceTuningEngine(private val context: Context) {
                 }
             }
 
-            // 4. Sustained Performance Mode (API 24+): enable in Balanced thermal mode, release in Boost/Acceleration
+            // 5. Dedicated Android Sustained Performance Mode (API 24+)
             val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
             if (pm != null && pm.isSustainedPerformanceModeSupported) {
-                val useSustained = settings.cpuMode == CpuMode.BALANCED &&
-                    !settings.increaseCpuPerformance &&
-                    !settings.highPerfFpsControl
+                val useSustained = settings.sustainedPerformanceMode
                 window.setSustainedPerformanceMode(useSustained)
                 sustainedApplied = useSustained
             }
 
-            // 5. Unbuffered touch dispatch on Activity Window
+            // 6. Unbuffered touch dispatch on Activity Window
             installOrUpdateTouchInterceptor(activity, unbufferedTouchEnabled)
 
-            // 6. Layer acceleration hint for Skia OpenGL / Vulkan UI pipeline
+            // 7. Layer acceleration hint for Skia OpenGL / Vulkan UI pipeline
             val targetLayer = if (settings.forceGpuOpenGl || (settings.enableSkiaVulkan && gpuInfo.vulkanSupported)) {
                 View.LAYER_TYPE_NONE // Window already FLAG_HARDWARE_ACCELERATED -> full GPU HWUI display list
             } else {
@@ -465,7 +618,12 @@ class PerformanceTuningEngine(private val context: Context) {
             }
         }
 
-        return appliedHz to sustainedApplied
+        return WindowApplyResult(
+            appliedHz = appliedHz,
+            sustainedActive = sustainedApplied,
+            minimalPostProcessing = minimalPostProc,
+            appliedModeId = appliedModeId
+        )
     }
 
     fun installOrUpdateTouchInterceptor(activity: Activity, enabled: Boolean) {
@@ -476,7 +634,8 @@ class PerformanceTuningEngine(private val context: Context) {
             window.callback = UnbufferedTouchWindowCallback(
                 original = currentCallback,
                 decorView = window.decorView,
-                isEnabled = { unbufferedTouchEnabled }
+                isEnabled = { unbufferedTouchEnabled },
+                isThreeFingerBlocked = { threeFingerGuardEnabled }
             )
         }
         if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -494,7 +653,12 @@ class PerformanceTuningEngine(private val context: Context) {
     ) {
         val targetHz = computeEffectiveTargetFps(settings, supportedRates)
         params.preferredRefreshRate = targetHz.toFloat()
-        if (settings.forceGpuOpenGl || settings.enableSkiaVulkan || settings.increaseGpuPerformance || settings.highPerfFpsControl) {
+        if (settings.forceGpuOpenGl ||
+            settings.enableSkiaVulkan ||
+            settings.increaseGpuPerformance ||
+            settings.highPerfFpsControl ||
+            settings.optimizeFramePacing
+        ) {
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
         }
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
@@ -504,9 +668,13 @@ class PerformanceTuningEngine(private val context: Context) {
             @Suppress("DEPRECATION")
             wm?.defaultDisplay
         }
-        val bestMode = display?.supportedModes?.minByOrNull { abs(it.refreshRate - targetHz.toFloat()) }
+        val explicitMode = if (settings.displayResolutionOpt && settings.preferredDisplayModeId > 0) {
+            display?.supportedModes?.firstOrNull { it.modeId == settings.preferredDisplayModeId }
+        } else null
+        val bestMode = explicitMode ?: display?.supportedModes?.minByOrNull { abs(it.refreshRate - targetHz.toFloat()) }
         if (bestMode != null) {
             params.preferredDisplayModeId = bestMode.modeId
+            params.preferredRefreshRate = bestMode.refreshRate
         }
         if (targetView != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             (settings.enhanceTouchSensitivity || settings.reduceTouchLatency)
@@ -546,11 +714,17 @@ class PerformanceTuningEngine(private val context: Context) {
     private class UnbufferedTouchWindowCallback(
         private val original: Window.Callback,
         private val decorView: View,
-        private val isEnabled: () -> Boolean
+        private val isEnabled: () -> Boolean,
+        private val isThreeFingerBlocked: () -> Boolean
     ) : Window.Callback by original {
         override fun dispatchTouchEvent(event: MotionEvent?): Boolean {
-            if (event != null && isEnabled()) {
-                runCatching { decorView.requestUnbufferedDispatch(event) }
+            if (event != null) {
+                if (isThreeFingerBlocked() && event.pointerCount >= 3) {
+                    return true
+                }
+                if (isEnabled()) {
+                    runCatching { decorView.requestUnbufferedDispatch(event) }
+                }
             }
             return original.dispatchTouchEvent(event)
         }

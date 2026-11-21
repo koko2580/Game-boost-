@@ -12,19 +12,27 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.CpuMode
+import com.example.data.DisplayModeOption
 import com.example.data.GameAudioEnhancer
 import com.example.data.GamePanelStyle
 import com.example.data.GameTurboSettings
 import com.example.data.HardwareTelemetry
 import com.example.data.InstalledAppInfo
 import com.example.data.PerformanceEngineStatus
+import com.example.data.PerformanceSystemInspector
 import com.example.data.PerformanceTuningEngine
 import com.example.data.PermissionStatus
 import com.example.data.SystemHardwareController
+import org.junit.Assert.assertFalse
 import com.example.security.AppSecurityGuard
 import com.example.security.SecurityAuditReport
+import com.example.data.BoostStepId
+import com.example.data.BoostStepStatus
+import com.example.data.OneTapBoosterState
+import com.example.data.OneTapStepResult
 import com.example.ui.components.GamePanelOverlayContent
 import com.example.ui.components.NetworkGateOverlay
+import com.example.ui.components.OneTapBoosterDialog
 import com.example.ui.components.OverlayCallbacks
 import com.example.ui.screens.LauncherHomeScreen
 import com.example.ui.screens.PerformanceActions
@@ -585,7 +593,384 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.onNodeWithTag("overlay_ram_boost_pill").assertIsDisplayed()
     }
 
-    private fun emptyPerformanceActions() = PerformanceActions(
+    @Test
+    @Config(sdk = [36])
+    fun `frame pacing jitter tracking ADPF toggle display resolution and auto perf evaluator work`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val engine = PerformanceTuningEngine(context)
+
+        // 1. Frame pacing jitter calculation
+        val settingsOn = GameTurboSettings(
+            optimizeFramePacing = true,
+            enableAdpfHints = true,
+            frameRateTarget = 120,
+            increaseCpuPerformance = true,
+            smartBackgroundControl = true,
+            displayResolutionOpt = true,
+            autoPerformanceOptimization = true
+        )
+        val statusOn = engine.applyProfile(
+            settings = settingsOn,
+            supportedRates = listOf(60, 120),
+            batteryPercent = 85,
+            isCharging = false
+        )
+        assertTrue(statusOn.framePacingActive)
+        assertTrue(statusOn.smartBackgroundActive)
+        assertTrue(statusOn.displayResolutionOptActive)
+        assertTrue(statusOn.autoPerfActive)
+        assertTrue(statusOn.supportedResolutionModes.isNotEmpty())
+        assertTrue(statusOn.currentResolutionLabel.contains("×"))
+        assertTrue(statusOn.adpfTargetDurationMs in 5.0f..10.0f)
+
+        engine.reportFrameDurationNanos(8_300_000L, settingsOn)
+        engine.reportFrameDurationNanos(12_300_000L, settingsOn)
+        val statusAfterJitter = engine.applyProfile(settingsOn, listOf(60, 120), batteryPercent = 85)
+        assertTrue(statusAfterJitter.framePacingJitterMs > 0.1f)
+
+        // 2. Explicit ADPF disable
+        val settingsAdpfOff = settingsOn.copy(enableAdpfHints = false, optimizeFramePacing = false)
+        val statusAdpfOff = engine.applyProfile(settingsAdpfOff, listOf(60, 120))
+        assertFalse(statusAdpfOff.adpfHintActive)
+        assertFalse(statusAdpfOff.framePacingActive)
+
+        // 3. Auto Performance Optimization matrix
+        val inspector = PerformanceSystemInspector(context)
+        val ecoDecision = inspector.evaluateAutoPerformance(
+            thermalLabel = "NORMAL",
+            batterySaverActive = true,
+            batteryPercent = 90,
+            isCharging = false,
+            sustainedSupported = true
+        )
+        assertEquals(CpuMode.ENERGY_SAVING, ecoDecision.recommendedCpuMode)
+        assertFalse(ecoDecision.recommendSustained)
+
+        val thermalDecision = inspector.evaluateAutoPerformance(
+            thermalLabel = "HIGH",
+            batterySaverActive = false,
+            batteryPercent = 75,
+            isCharging = false,
+            sustainedSupported = true
+        )
+        assertEquals(CpuMode.BALANCED, thermalDecision.recommendedCpuMode)
+        assertTrue(thermalDecision.recommendSustained)
+
+        val optimalDecision = inspector.evaluateAutoPerformance(
+            thermalLabel = "NORMAL",
+            batterySaverActive = false,
+            batteryPercent = 82,
+            isCharging = false,
+            sustainedSupported = true
+        )
+        assertEquals(CpuMode.ACCELERATION, optimalDecision.recommendedCpuMode)
+        assertFalse(optimalDecision.recommendSustained)
+
+        engine.closeSession()
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w412dp-h915dp")
+    fun `settings performance suite renders all seven pro features and dispatches actions`() {
+        var autoOptToggled = false
+        var framePacingToggled = false
+        var adpfToggled = false
+        var sustainedToggled = false
+        var powerSaverOpened = false
+        var trimmedBg = false
+        var appMgmtOpened = false
+        var selectedModeId = 0
+        var displaySettingsOpened = false
+
+        val status = PerformanceEngineStatus(
+            framePacingActive = true,
+            framePacingJitterMs = 1.25f,
+            minimalPostProcessingActive = true,
+            adpfSupported = true,
+            adpfHintActive = true,
+            adpfTargetDurationMs = 6.6f,
+            batterySaverActive = true,
+            backgroundProcessCount = 3,
+            backgroundProcessSampleNames = listOf("com.social.app", "com.music.app"),
+            currentResolutionLabel = "1080×2400 @ 120Hz",
+            supportedResolutionModes = listOf(
+                DisplayModeOption(modeId = 2, widthPx = 1080, heightPx = 2400, refreshRateHz = 120),
+                DisplayModeOption(modeId = 1, widthPx = 1080, heightPx = 2400, refreshRateHz = 60)
+            ),
+            appliedDisplayModeId = 2,
+            densityDpi = 420,
+            sustainedPerformanceSupported = true,
+            sustainedPerformanceActive = true,
+            autoPerfActive = true,
+            autoProfileRecommendation = "Optimal Thermals & Power -> Turbo Peak"
+        )
+
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                SettingsScreen(
+                    settings = GameTurboSettings(
+                        autoPerformanceOptimization = false,
+                        optimizeFramePacing = true,
+                        enableAdpfHints = true,
+                        sustainedPerformanceMode = false,
+                        disablePowerSavingInGame = true,
+                        smartBackgroundControl = true,
+                        displayResolutionOpt = true,
+                        preferredDisplayModeId = 2
+                    ),
+                    telemetry = HardwareTelemetry(actualFps = 120, supportedRefreshRates = listOf(60, 120)),
+                    performanceStatus = status,
+                    permissions = PermissionStatus(),
+                    securityAudit = SecurityAuditReport(),
+                    statusMessage = null,
+                    performanceActions = emptyPerformanceActions(
+                        onSetOptimizeFramePacing = { framePacingToggled = true },
+                        onSetEnableAdpfHints = { adpfToggled = true },
+                        onOpenPowerSaverSettings = { powerSaverOpened = true },
+                        onRunSmartBackgroundTrim = { trimmedBg = true },
+                        onOpenAppManagementSettings = { appMgmtOpened = true },
+                        onSelectDisplayModeId = { selectedModeId = it },
+                        onOpenDisplaySettings = { displaySettingsOpened = true },
+                        onSetSustainedPerformanceMode = { sustainedToggled = true },
+                        onSetAutoPerformanceOptimization = { autoOptToggled = true }
+                    ),
+                    onUpdateSettings = {},
+                    onBoostRam = {},
+                    onClearCache = {},
+                    onSelectWallpaperTheme = { _, _ -> },
+                    onOpenPermissions = {},
+                    onDismissStatus = {},
+                    onBack = {}
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("settings_cat_PERFORMANCE").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("perf_auto_optimize").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("perf_frame_pacing").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("perf_adpf_hints").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("perf_sustained_mode").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("btn_power_settings").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("btn_trim_bg_apps").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("btn_manage_apps").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("display_mode_1").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("btn_display_settings").performScrollTo().performClick()
+
+        assertTrue(autoOptToggled)
+        assertTrue(framePacingToggled)
+        assertTrue(adpfToggled)
+        assertTrue(sustainedToggled)
+        assertTrue(powerSaverOpened)
+        assertTrue(trimmedBg)
+        assertTrue(appMgmtOpened)
+        assertEquals(1, selectedModeId)
+        assertTrue(displaySettingsOpened)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w412dp-h915dp")
+    fun `one tap booster evaluates memory pressure and renders six stages plus final report`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val inspector = PerformanceSystemInspector(context)
+        assertEquals("LOW", inspector.evaluateMemoryPressure(40).first)
+        assertEquals("MODERATE", inspector.evaluateMemoryPressure(66).first)
+        assertEquals("HIGH", inspector.evaluateMemoryPressure(79).first)
+        assertEquals("CRITICAL", inspector.evaluateMemoryPressure(92).first)
+
+        var reboostClicked = false
+        var powerClicked = false
+        var doneClicked = false
+
+        val reportState = OneTapBoosterState(
+            isVisible = true,
+            isRunning = false,
+            isCompleted = true,
+            currentStepIndex = 5,
+            progress = 1f,
+            steps = BoostStepId.entries.map { id ->
+                OneTapStepResult(
+                    id = id,
+                    status = if (id == BoostStepId.POWER_OPTIMIZATION) BoostStepStatus.WARNING else BoostStepStatus.DONE,
+                    metricBadge = "OK",
+                    detail = "${id.title} verified"
+                )
+            },
+            ramUsedBeforePercent = 76,
+            ramUsedAfterPercent = 54,
+            memoryPressureLabel = "HIGH",
+            freedMb = 128,
+            trimmedApps = 5,
+            thermalLabel = "NORMAL",
+            batteryTempC = 34.5f,
+            batterySaverActive = true,
+            selectedCpuMode = CpuMode.ACCELERATION,
+            appliedProfileLabel = "Acceleration • ADPF + Frame Pacing",
+            finalScore = 82,
+            finalVerdict = "POWER SAVER LIMIT"
+        )
+
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                OneTapBoosterDialog(
+                    state = reportState,
+                    onReBoost = { reboostClicked = true },
+                    onOpenPowerSettings = { powerClicked = true },
+                    onDismiss = { doneClicked = true }
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("one_tap_booster_dialog").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("one_tap_final_report_card").assertIsDisplayed()
+        composeTestRule.onNodeWithText("82/100").assertIsDisplayed()
+        composeTestRule.onNodeWithText("+128 MB").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("one_tap_power_settings_btn").performScrollTo().performClick()
+        BoostStepId.entries.forEach { stepId ->
+            composeTestRule.onNodeWithTag("one_tap_step_${stepId.name}").performScrollTo().assertIsDisplayed()
+        }
+        composeTestRule.onNodeWithTag("one_tap_reboost_btn").performClick()
+        composeTestRule.onNodeWithTag("one_tap_done_btn").performClick()
+
+        assertTrue(powerClicked)
+        assertTrue(reboostClicked)
+        assertTrue(doneClicked)
+    }
+
+    @Test
+    @Config(sdk = [36])
+    fun `performance engine wires three finger guard flag and blocks 3 plus pointers`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val engine = PerformanceTuningEngine(context)
+
+        val disabledStatus = engine.applyProfile(
+            settings = GameTurboSettings(disableThreeFingerScreenshot = false),
+            supportedRates = listOf(60)
+        )
+        assertFalse(engine.isThreeFingerGuardEnabled())
+        assertFalse(engine.shouldBlockMultiFingerGesture(pointerCount = 3))
+        assertFalse(engine.shouldBlockMultiFingerGesture(pointerCount = 2))
+        assertTrue(disabledStatus.effectiveTargetFps > 0)
+
+        engine.applyProfile(
+            settings = GameTurboSettings(disableThreeFingerScreenshot = true),
+            supportedRates = listOf(60)
+        )
+        assertTrue(engine.isThreeFingerGuardEnabled())
+        assertFalse(engine.shouldBlockMultiFingerGesture(pointerCount = 2))
+        assertTrue(engine.shouldBlockMultiFingerGesture(pointerCount = 3))
+        assertTrue(engine.shouldBlockMultiFingerGesture(pointerCount = 4))
+        engine.closeSession()
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w840dp-h360dp")
+    fun `xiaomi and redmagic overlays render interactive stopwatch bar when active or paused`() {
+        var toggledCount = 0
+        var resetCount = 0
+        val activeStyle = androidx.compose.runtime.mutableStateOf(GamePanelStyle.XIAOMI_STYLE)
+        composeTestRule.mainClock.autoAdvance = false
+
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                GamePanelOverlayContent(
+                    settings = GameTurboSettings(gamePanelStyle = activeStyle.value),
+                    telemetry = HardwareTelemetry(actualFps = 120, cpuFreqMHz = 2800, ramUsedPercent = 40),
+                    brightnessFraction = 0.7f,
+                    volumeFraction = 0.7f,
+                    autoBrightness = false,
+                    autoRotate = false,
+                    stopwatchSeconds = 65L,
+                    isStopwatchRunning = true,
+                    statusMessage = null,
+                    callbacks = testOverlayCallbacks(
+                        onToggleStopwatch = { toggledCount++ },
+                        onResetStopwatch = { resetCount++ }
+                    )
+                )
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("overlay_stopwatch_pill").assertIsDisplayed()
+        composeTestRule.onNodeWithText("01:05").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("overlay_stopwatch_toggle").performClick()
+        composeTestRule.onNodeWithTag("overlay_stopwatch_reset").performClick()
+        assertEquals(1, toggledCount)
+        assertEquals(1, resetCount)
+
+        composeTestRule.runOnUiThread { activeStyle.value = GamePanelStyle.REDMAGIC_STYLE }
+        composeTestRule.waitForIdle()
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("overlay_stopwatch_pill").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("overlay_stopwatch_toggle").performClick()
+        composeTestRule.onNodeWithTag("overlay_stopwatch_reset").performClick()
+        assertEquals(2, toggledCount)
+        assertEquals(2, resetCount)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w900dp-h1200dp")
+    fun `settings ram help dialogs three finger guard and auto detect toggles update state`() {
+        var latestSettings = GameTurboSettings(
+            disableThreeFingerScreenshot = false,
+            autoDetectGameLaunch = false
+        )
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                SettingsScreen(
+                    settings = latestSettings,
+                    telemetry = HardwareTelemetry(),
+                    performanceStatus = PerformanceEngineStatus(),
+                    permissions = PermissionStatus(),
+                    securityAudit = SecurityAuditReport(),
+                    statusMessage = null,
+                    performanceActions = emptyPerformanceActions(),
+                    onUpdateSettings = { transform -> latestSettings = transform(latestSettings) },
+                    onBoostRam = {},
+                    onClearCache = {},
+                    onSelectWallpaperTheme = { _, _ -> },
+                    onOpenPermissions = {},
+                    onDismissStatus = {},
+                    onBack = {}
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        // Check RAM help dialogs
+        composeTestRule.onNodeWithTag("settings_cat_RAM").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("ram_bg_limit_help").performClick()
+        composeTestRule.onNodeWithTag("ram_help_dialog_ok").assertIsDisplayed().performClick()
+
+        composeTestRule.onNodeWithTag("ram_cache_limit_help").performClick()
+        composeTestRule.onNodeWithTag("ram_help_dialog_ok").assertIsDisplayed().performClick()
+
+        // Check Memory Guard three-finger toggle
+        composeTestRule.onNodeWithTag("settings_cat_PROTECTION").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("toggle_three_finger_guard").performClick()
+        assertTrue(latestSettings.disableThreeFingerScreenshot)
+
+        // Check Advanced auto-detect game launch toggle
+        composeTestRule.onNodeWithTag("settings_cat_OTHER").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("toggle_auto_detect_game").performScrollTo().performClick()
+        assertTrue(latestSettings.autoDetectGameLaunch)
+    }
+
+    private fun emptyPerformanceActions(
+        onSetOptimizeFramePacing: (Boolean) -> Unit = {},
+        onSetEnableAdpfHints: (Boolean) -> Unit = {},
+        onOpenPowerSaverSettings: () -> Unit = {},
+        onRunSmartBackgroundTrim: () -> Unit = {},
+        onOpenAppManagementSettings: () -> Unit = {},
+        onSelectDisplayModeId: (Int) -> Unit = {},
+        onOpenDisplaySettings: () -> Unit = {},
+        onSetSustainedPerformanceMode: (Boolean) -> Unit = {},
+        onSetAutoPerformanceOptimization: (Boolean) -> Unit = {}
+    ) = PerformanceActions(
         onSetFpsGameTarget = {},
         onSetFrameRateTarget = {},
         onSetSlidingFrictionIndex = {},
@@ -598,13 +983,27 @@ class TurboXMatrixAndPerfTest {
         onSetEnableSkiaVulkan = {},
         onSetHighPerfFpsControl = {},
         onOpenPermissions = {},
-        onOpenDeveloperOptions = {}
+        onOpenDeveloperOptions = {},
+        onSetOptimizeFramePacing = onSetOptimizeFramePacing,
+        onSetEnableAdpfHints = onSetEnableAdpfHints,
+        onSetDisablePowerSavingInGame = {},
+        onOpenPowerSaverSettings = onOpenPowerSaverSettings,
+        onSetSmartBackgroundControl = {},
+        onRunSmartBackgroundTrim = onRunSmartBackgroundTrim,
+        onOpenAppManagementSettings = onOpenAppManagementSettings,
+        onSetDisplayResolutionOpt = {},
+        onSelectDisplayModeId = onSelectDisplayModeId,
+        onOpenDisplaySettings = onOpenDisplaySettings,
+        onSetSustainedPerformanceMode = onSetSustainedPerformanceMode,
+        onSetAutoPerformanceOptimization = onSetAutoPerformanceOptimization
     )
 
     private fun testOverlayCallbacks(
         onSelectCpuMode: (CpuMode) -> Unit = {},
         onBoostRam: () -> Unit = {},
-        onMinimizeClick: () -> Unit = {}
+        onMinimizeClick: () -> Unit = {},
+        onToggleStopwatch: () -> Unit = {},
+        onResetStopwatch: () -> Unit = {}
     ) = OverlayCallbacks(
         onHomeClick = {},
         onSettingsClick = {},
@@ -616,8 +1015,8 @@ class TurboXMatrixAndPerfTest {
         onBoostRam = onBoostRam,
         onClearCache = {},
         onPingTest = {},
-        onToggleStopwatch = {},
-        onResetStopwatch = {},
+        onToggleStopwatch = onToggleStopwatch,
+        onResetStopwatch = onResetStopwatch,
         onToggleActiveInfo = {},
         onToggleTurboX = {},
         onToggleDataPanel = {},

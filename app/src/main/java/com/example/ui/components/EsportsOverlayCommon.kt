@@ -48,16 +48,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
+import java.util.Locale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -746,5 +752,79 @@ internal fun OverlayStatusPill(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+@Composable
+internal fun EsportsStopwatchBar(
+    stopwatchSeconds: Long,
+    isRunning: Boolean,
+    accent: Color,
+    shape: Shape,
+    onToggle: () -> Unit,
+    onReset: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val mins = stopwatchSeconds / 60L
+    val secs = stopwatchSeconds % 60L
+    val formatted = String.format(Locale.US, "%02d:%02d", mins, secs)
+    Row(
+        modifier = modifier
+            .testTag("overlay_stopwatch_pill")
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Color(0xFF131826))
+            .border(1.dp, accent.copy(alpha = 0.7f), shape)
+            .padding(horizontal = 10.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(Icons.Rounded.Timer, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
+            Text(
+                text = formatted,
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontFamily = RajdhaniFontFamily,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = TextPrimary
+            )
+            Text(
+                text = if (isRunning) "RUNNING" else "PAUSED",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                color = accent
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = onToggle,
+                modifier = Modifier
+                    .testTag("overlay_stopwatch_toggle")
+                    .size(34.dp)
+            ) {
+                Icon(
+                    imageVector = if (isRunning) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = if (isRunning) "Pause stopwatch" else "Resume stopwatch",
+                    tint = Color.White,
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+            IconButton(
+                onClick = onReset,
+                modifier = Modifier
+                    .testTag("overlay_stopwatch_reset")
+                    .size(34.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Refresh,
+                    contentDescription = "Reset stopwatch",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
     }
 }

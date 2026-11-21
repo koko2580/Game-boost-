@@ -47,10 +47,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.ui.theme.ElectricCyan
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -141,6 +144,8 @@ class GameOverlayService : Service() {
     @Volatile
     private var liveFrameMs = 16.6f
     private var knownPackages: List<String> = emptyList()
+    private var appLabelsByPackage: Map<String, String> = emptyMap()
+    private var lastAutoDetectedGamePkg: String? = null
     @Volatile
     private var latestSettings: GameTurboSettings = GameTurboSettings()
     private var hudPassThroughParams: WindowManager.LayoutParams? = null
@@ -203,7 +208,9 @@ class GameOverlayService : Service() {
     private fun startTelemetryUpdates() {
         telemetryJob?.cancel()
         telemetryJob = serviceScope.launch {
-            knownPackages = hardware.loadLaunchableApps().map { it.packageName }
+            val apps = hardware.loadLaunchableApps()
+            knownPackages = apps.map { it.packageName }
+            appLabelsByPackage = apps.associate { it.packageName to it.appName }
             val (_, supportedRates) = hardware.readDisplayRefreshInfo()
             launch {
                 networkMonitor?.isConnected?.collect { online ->
@@ -213,10 +220,13 @@ class GameOverlayService : Service() {
             launch {
                 repo.settingsFlow.collect { s ->
                     latestSettings = s
+                    val currentTelemetry = telemetryFlow.value
                     hardware.performanceEngine.applyProfile(
                         settings = s,
                         supportedRates = supportedRates,
-                        isInGameLaunch = true
+                        isInGameLaunch = true,
+                        batteryPercent = currentTelemetry.batteryPercent,
+                        isCharging = currentTelemetry.isCharging
                     )
                     hudPassThroughParams?.let { hp ->
                         hardware.performanceEngine.applyToOverlayWindowParams(hp, s, supportedRates, hudPassThroughView)
@@ -249,6 +259,62 @@ class GameOverlayService : Service() {
                 if (stopwatchRunningFlow.value) {
                     stopwatchSecFlow.value += 1L
                 }
+
+                if (settings.autoPerformanceOptimization) {
+                    val decision = hardware.performanceEngine.evaluateAutoPerformance(
+                        batteryPercent = snapshot.batteryPercent,
+                        isCharging = snapshot.isCharging
+                    )
+                    if (settings.cpuMode != decision.recommendedCpuMode ||
+                        settings.sustainedPerformanceMode != decision.recommendSustained
+                    ) {
+                        repo.updateSettings { cur ->
+                            if (!cur.autoPerformanceOptimization) cur
+                            else cur.copy(
+                                cpuMode = decision.recommendedCpuMode,
+                                sustainedPerformanceMode = decision.recommendSustained
+                            )
+                        }
+                    }
+                }
+
+                val fgPkg = hardware.getForegroundPackageName()
+                if (fgPkg != null && fgPkg !in settings.addedGamePackages && fgPkg != packageName) {
+                    lastAutoDetectedGamePkg = null
+                }
+                val triggeredGame = SystemHardwareController.evaluateForegroundGameTrigger(
+                    foregroundPkg = fgPkg,
+                    lastDetectedPkg = lastAutoDetectedGamePkg,
+                    settings = settings,
+                    ownPackage = packageName
+                )
+                if (triggeredGame != null) {
+                    lastAutoDetectedGamePkg = triggeredGame
+                    if (settings.autoDndOnEnter || settings.dndMode) {
+                        hardware.setDoNotDisturb(true)
+                    }
+                    if (settings.muteNotificationsInGame || settings.notificationMuteMode) {
+                        hardware.audioEnhancer.setNotificationMuted(true)
+                    }
+                    hardware.performanceEngine.applyProfile(
+                        settings = settings,
+                        supportedRates = supportedRates,
+                        isInGameLaunch = true,
+                        batteryPercent = snapshot.batteryPercent,
+                        isCharging = snapshot.isCharging
+                    )
+                    if (settings.preventMemoryLeaks || settings.smartBackgroundControl) {
+                        hardware.performRealMemoryBoost(
+                            protectedPackages = settings.addedGamePackages + triggeredGame,
+                            allKnownPackages = knownPackages,
+                            backgroundLimitIndex = settings.backgroundLimitIndex,
+                            cacheLimitIndex = settings.cacheLimitIndex
+                        )
+                    }
+                    val gameLabel = appLabelsByPackage[triggeredGame] ?: triggeredGame
+                    showTransientStatus("Auto-detected $gameLabel: Boost Active")
+                }
+
                 delay(1200L)
             }
         }
@@ -451,7 +517,12 @@ class GameOverlayService : Service() {
         onBoostRam = {
             hardware.audioEnhancer.pulseHaptic(true)
             serviceScope.launch {
-                val res = hardware.performRealMemoryBoost(settings.addedGamePackages, knownPackages)
+                val res = hardware.performRealMemoryBoost(
+                    protectedPackages = settings.addedGamePackages,
+                    allKnownPackages = knownPackages,
+                    backgroundLimitIndex = settings.backgroundLimitIndex,
+                    cacheLimitIndex = settings.cacheLimitIndex
+                )
                 repo.updateSettings {
                     it.copy(totalBoostCount = it.totalBoostCount + 1, lastFreedMb = res.freedMb)
                 }
@@ -461,7 +532,7 @@ class GameOverlayService : Service() {
         onClearCache = {
             hardware.audioEnhancer.pulseHaptic(false)
             serviceScope.launch {
-                val freedKb = hardware.clearAppCaches()
+                val freedKb = hardware.clearAppCaches(settings.cacheLimitIndex)
                 showTransientStatus("Cleared $freedKb KB cache")
             }
         },
@@ -499,7 +570,12 @@ class GameOverlayService : Service() {
                     )
                 }
                 if (next) {
-                    val res = hardware.performRealMemoryBoost(settings.addedGamePackages, knownPackages)
+                    val res = hardware.performRealMemoryBoost(
+                        protectedPackages = settings.addedGamePackages,
+                        allKnownPackages = knownPackages,
+                        backgroundLimitIndex = settings.backgroundLimitIndex,
+                        cacheLimitIndex = settings.cacheLimitIndex
+                    )
                     showTransientStatus("Turbo X Engaged • Freed ${res.freedMb} MB")
                 } else {
                     showTransientStatus("Turbo X Off")
@@ -527,9 +603,17 @@ class GameOverlayService : Service() {
         onToggleScreenZoom = {
             hardware.audioEnhancer.pulseHaptic(false)
             serviceScope.launch {
-                val nextEnabled = !settings.screenZoomEnabled
-                repo.updateSettings { it.copy(screenZoomEnabled = nextEnabled) }
-                showTransientStatus(if (nextEnabled) "Scope Zoom On" else "Scope Zoom Off")
+                if (!settings.screenZoomEnabled) {
+                    repo.updateSettings { it.copy(screenZoomEnabled = true, zoomScale = 1.5f) }
+                    showTransientStatus("Scope Zoom: 1.5x")
+                } else if (settings.zoomScale < 2.5f) {
+                    val nextScale = if (settings.zoomScale < 1.8f) 2.0f else 3.0f
+                    repo.updateSettings { it.copy(zoomScale = nextScale) }
+                    showTransientStatus("Scope Zoom: ${nextScale}x")
+                } else {
+                    repo.updateSettings { it.copy(screenZoomEnabled = false, zoomScale = 2.0f) }
+                    showTransientStatus("Scope Zoom Off")
+                }
             }
         },
         onToggleBackgroundControl = {
@@ -538,7 +622,12 @@ class GameOverlayService : Service() {
                 val next = !settings.backgroundControlEnabled
                 repo.updateSettings { it.copy(backgroundControlEnabled = next) }
                 if (next) {
-                    val res = hardware.performRealMemoryBoost(settings.addedGamePackages, knownPackages)
+                    val res = hardware.performRealMemoryBoost(
+                        protectedPackages = settings.addedGamePackages,
+                        allKnownPackages = knownPackages,
+                        backgroundLimitIndex = settings.backgroundLimitIndex,
+                        cacheLimitIndex = settings.cacheLimitIndex
+                    )
                     showTransientStatus("BG Control: Trimmed ${res.trimmedPackages} apps")
                 } else {
                     showTransientStatus("Background Control Paused")
@@ -716,6 +805,28 @@ private fun PersistentHudPassThroughLayer(
             .background(tint)
     ) {
         CrosshairOverlay(style = settings.crosshairStyle)
+
+        if (settings.screenZoomEnabled) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(118.dp)
+                    .graphicsLayer(
+                        scaleX = 1f + (settings.zoomScale - 1f) * 0.14f,
+                        scaleY = 1f + (settings.zoomScale - 1f) * 0.14f
+                    )
+                    .border(2.dp, ElectricCyan.copy(alpha = 0.85f), CircleShape)
+                    .background(ElectricCyan.copy(alpha = 0.10f), CircleShape),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Text(
+                    text = "${settings.zoomScale}x SCOPE",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ElectricCyan,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+        }
 
         if (settings.activeInfoHud || settings.dataPanelVisible) {
             Column(

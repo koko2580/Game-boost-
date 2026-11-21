@@ -70,6 +70,7 @@ import com.example.ui.components.CrosshairOverlay
 import com.example.ui.components.GamePanelOverlayContent
 import com.example.ui.components.LocalTurboTouchConfig
 import com.example.ui.components.NetworkGateOverlay
+import com.example.ui.components.OneTapBoosterDialog
 import com.example.ui.components.OverlayCallbacks
 import com.example.ui.components.RewardedAdDialog
 import com.example.ui.components.TurboCockpitReactor
@@ -139,6 +140,7 @@ class MainActivity : ComponentActivity() {
             val showSplash by viewModel.showSplash.collectAsStateWithLifecycle()
             val prefsLoaded by viewModel.prefsLoaded.collectAsStateWithLifecycle()
             val isNetworkConnected by viewModel.isNetworkConnected.collectAsStateWithLifecycle()
+            val oneTapState by viewModel.oneTapBooster.collectAsStateWithLifecycle()
 
             val lifecycleOwner = LocalLifecycleOwner.current
             DisposableEffect(lifecycleOwner) {
@@ -161,6 +163,8 @@ class MainActivity : ComponentActivity() {
                         }
                         Lifecycle.Event.ON_RESUME -> {
                             viewModel.refreshNetworkConnection()
+                            viewModel.refreshPermissionsAndHardware()
+                            viewModel.checkForegroundGameAutoLaunch()
                         }
                         Lifecycle.Event.ON_STOP -> {
                             viewModel.setUiActive(false)
@@ -197,6 +201,14 @@ class MainActivity : ComponentActivity() {
                 settings.reduceTouchLatency,
                 settings.scrollingSensitivity,
                 settings.slidingFrictionIndex,
+                settings.optimizeFramePacing,
+                settings.enableAdpfHints,
+                settings.disablePowerSavingInGame,
+                settings.smartBackgroundControl,
+                settings.displayResolutionOpt,
+                settings.preferredDisplayModeId,
+                settings.sustainedPerformanceMode,
+                settings.autoPerformanceOptimization,
                 telemetry.supportedRefreshRates
             ) {
                 viewModel.syncWindowPerformance(this@MainActivity)
@@ -275,7 +287,7 @@ class MainActivity : ComponentActivity() {
                                 onNavigateAddApps = { navController.navigate(ROUTE_ADD_APPS) },
                                 onNavigateSettings = { navController.navigate(ROUTE_SETTINGS) },
                                 onNavigatePermissions = { navController.navigate(ROUTE_PERMISSIONS) },
-                                onBoostRam = viewModel::performBoost,
+                                onBoostRam = { viewModel.runOneTapBooster() },
                                 onRunPingTest = viewModel::runPingTest,
                                 onSelectCpuMode = viewModel::setCpuMode,
                                 onSelectWallpaperTheme = viewModel::setWallpaperTheme,
@@ -298,7 +310,19 @@ class MainActivity : ComponentActivity() {
                                     onSetEnableSkiaVulkan = viewModel::setEnableSkiaVulkan,
                                     onSetHighPerfFpsControl = viewModel::setHighPerfFpsControl,
                                     onOpenPermissions = { navController.navigate(ROUTE_PERMISSIONS) },
-                                    onOpenDeveloperOptions = viewModel::openDeveloperRenderingOptions
+                                    onOpenDeveloperOptions = viewModel::openDeveloperRenderingOptions,
+                                    onSetOptimizeFramePacing = viewModel::setOptimizeFramePacing,
+                                    onSetEnableAdpfHints = viewModel::setEnableAdpfHints,
+                                    onSetDisablePowerSavingInGame = viewModel::setDisablePowerSavingInGame,
+                                    onOpenPowerSaverSettings = viewModel::openPowerSaverSettings,
+                                    onSetSmartBackgroundControl = viewModel::setSmartBackgroundControl,
+                                    onRunSmartBackgroundTrim = viewModel::runSmartBackgroundTrim,
+                                    onOpenAppManagementSettings = viewModel::openAppManagementSettings,
+                                    onSetDisplayResolutionOpt = viewModel::setDisplayResolutionOpt,
+                                    onSelectDisplayModeId = viewModel::selectDisplayModeId,
+                                    onOpenDisplaySettings = viewModel::openDisplaySettings,
+                                    onSetSustainedPerformanceMode = viewModel::setSustainedPerformanceMode,
+                                    onSetAutoPerformanceOptimization = viewModel::setAutoPerformanceOptimization
                                 )
                             }
                             SettingsScreen(
@@ -505,6 +529,14 @@ class MainActivity : ComponentActivity() {
                             glowColor = cpuModeColor(settings.cpuMode, LocalTurboAccent.current.accent)
                         )
                     }
+
+                    // One Tap Booster 6-Stage Diagnostic & Final Report Dialog
+                    OneTapBoosterDialog(
+                        state = oneTapState,
+                        onReBoost = { viewModel.runOneTapBooster() },
+                        onOpenPowerSettings = viewModel::openPowerSaverSettings,
+                        onDismiss = viewModel::dismissOneTapBooster
+                    )
 
                     // Turbo Time Gate & Real AdMob Rewarded Ad Dialog
                     RewardedAdDialog(

@@ -103,7 +103,19 @@ data class PerformanceActions(
     val onSetEnableSkiaVulkan: (Boolean) -> Unit,
     val onSetHighPerfFpsControl: (Boolean) -> Unit,
     val onOpenPermissions: () -> Unit,
-    val onOpenDeveloperOptions: () -> Unit
+    val onOpenDeveloperOptions: () -> Unit,
+    val onSetOptimizeFramePacing: (Boolean) -> Unit = {},
+    val onSetEnableAdpfHints: (Boolean) -> Unit = {},
+    val onSetDisablePowerSavingInGame: (Boolean) -> Unit = {},
+    val onOpenPowerSaverSettings: () -> Unit = {},
+    val onSetSmartBackgroundControl: (Boolean) -> Unit = {},
+    val onRunSmartBackgroundTrim: () -> Unit = {},
+    val onOpenAppManagementSettings: () -> Unit = {},
+    val onSetDisplayResolutionOpt: (Boolean) -> Unit = {},
+    val onSelectDisplayModeId: (Int) -> Unit = {},
+    val onOpenDisplaySettings: () -> Unit = {},
+    val onSetSustainedPerformanceMode: (Boolean) -> Unit = {},
+    val onSetAutoPerformanceOptimization: (Boolean) -> Unit = {}
 )
 
 @Composable
@@ -228,6 +240,20 @@ fun PerformanceSettingsSection(
                 label = "Touch & Scroll",
                 value = "${if (engineStatus.unbufferedTouchActive) "Unbuffered Dispatch ON" else "Standard Dispatch"} • Glide x${String.format(Locale.US, "%.2f", engineStatus.scrollMultiplier * engineStatus.frictionFactor)}",
                 valueColor = if (engineStatus.unbufferedTouchActive) EmeraldBright else TextSecondary
+            )
+            EngineStatLine(
+                label = "Frame Pacing & Panel",
+                value = "${if (engineStatus.framePacingActive) "Pacing ON (${String.format(Locale.US, "%.2f", engineStatus.framePacingJitterMs)}ms)" else "Pacing OFF"} • ${engineStatus.currentResolutionLabel}",
+                valueColor = if (engineStatus.framePacingActive) ElectricCyan else TextSecondary
+            )
+            EngineStatLine(
+                label = "Power & Thermal Mode",
+                value = buildString {
+                    append(if (engineStatus.batterySaverActive) "Battery Saver ON!" else "Saver OFF")
+                    if (engineStatus.sustainedPerformanceActive) append(" • Sustained")
+                    if (engineStatus.autoPerfActive) append(" • Auto")
+                },
+                valueColor = if (engineStatus.batterySaverActive) CyberAmber else EmeraldBright
             )
             if (!permissions.writeSettingsGranted) {
                 Text(
@@ -355,6 +381,12 @@ fun PerformanceSettingsSection(
             testTag = "perf_high_fps"
         )
 
+        AdvancedPerformanceModulesSection(
+            settings = settings,
+            engineStatus = engineStatus,
+            actions = actions
+        )
+
         Spacer(modifier = Modifier.height(12.dp))
         Box(
             modifier = Modifier
@@ -425,7 +457,8 @@ fun DiscreteSliderRow(
     description: String,
     accentColor: Color,
     onIndexChange: (Int) -> Unit,
-    onHelpClick: () -> Unit
+    onHelpClick: () -> Unit,
+    helpTestTag: String? = null
 ) {
     Column(
         modifier = Modifier
@@ -446,7 +479,12 @@ fun DiscreteSliderRow(
                     color = TextPrimary,
                     modifier = Modifier.weight(1f)
                 )
-                IconButton(onClick = onHelpClick, modifier = Modifier.size(30.dp)) {
+                IconButton(
+                    onClick = onHelpClick,
+                    modifier = Modifier
+                        .then(if (helpTestTag != null) Modifier.testTag(helpTestTag) else Modifier)
+                        .size(30.dp)
+                ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.HelpOutline,
                         contentDescription = "Help for $title",

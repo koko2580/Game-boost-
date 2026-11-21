@@ -103,12 +103,20 @@ class ScreenshotProjectionService : Service() {
         mediaProjection = projection
 
         val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        wm.defaultDisplay.getRealMetrics(metrics)
-        val width = metrics.widthPixels.coerceAtLeast(720)
-        val height = metrics.heightPixels.coerceAtLeast(720)
-        val density = metrics.densityDpi
+        val density = resources.displayMetrics.densityDpi.coerceAtLeast(160)
+        val width: Int
+        val height: Int
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = wm.maximumWindowMetrics.bounds
+            width = bounds.width().coerceAtLeast(720)
+            height = bounds.height().coerceAtLeast(720)
+        } else {
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(metrics)
+            width = metrics.widthPixels.coerceAtLeast(720)
+            height = metrics.heightPixels.coerceAtLeast(720)
+        }
 
         val handler = Handler(Looper.getMainLooper())
         projection.registerCallback(object : MediaProjection.Callback() {
@@ -125,30 +133,37 @@ class ScreenshotProjectionService : Service() {
             if (captured) return@setOnImageAvailableListener
             val image = r.acquireLatestImage() ?: return@setOnImageAvailableListener
             captured = true
-            runCatching {
-                val plane = image.planes[0]
-                val buffer = plane.buffer
-                val pixelStride = plane.pixelStride
-                val rowStride = plane.rowStride
-                val rowPadding = rowStride - pixelStride * width
-                val fullBitmap = Bitmap.createBitmap(
-                    width + rowPadding / pixelStride,
-                    height,
-                    Bitmap.Config.ARGB_8888
-                )
-                fullBitmap.copyPixelsFromBuffer(buffer)
-                val cropped = Bitmap.createBitmap(fullBitmap, 0, 0, width, height)
-                fullBitmap.recycle()
-                val savedPath = ScreenshotHelper.saveBitmapToGallery(applicationContext, cropped)
-                cropped.recycle()
-                handler.post {
-                    val msg = if (savedPath != null) "Saved: $savedPath" else "Failed to save screenshot"
-                    Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
+            try {
+                runCatching {
+                    val plane = image.planes[0]
+                    val buffer = plane.buffer
+                    val pixelStride = plane.pixelStride
+                    val rowStride = plane.rowStride
+                    val rowPadding = (rowStride - pixelStride * width).coerceAtLeast(0)
+                    val fullBitmap = Bitmap.createBitmap(
+                        width + rowPadding / pixelStride,
+                        height,
+                        Bitmap.Config.ARGB_8888
+                    )
+                    var cropped: Bitmap? = null
+                    try {
+                        fullBitmap.copyPixelsFromBuffer(buffer)
+                        cropped = Bitmap.createBitmap(fullBitmap, 0, 0, width, height)
+                        val savedPath = ScreenshotHelper.saveBitmapToGallery(applicationContext, cropped)
+                        handler.post {
+                            val msg = if (savedPath != null) "Saved: $savedPath" else "Failed to save screenshot"
+                            Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
+                        }
+                    } finally {
+                        if (!fullBitmap.isRecycled) fullBitmap.recycle()
+                        if (cropped != null && !cropped.isRecycled) cropped.recycle()
+                    }
                 }
+            } finally {
+                runCatching { image.close() }
+                cleanup()
+                stopSelf()
             }
-            image.close()
-            cleanup()
-            stopSelf()
         }, handler)
 
         // Small delay so the permission dialog finishes fading out before capturing

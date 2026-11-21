@@ -154,6 +154,15 @@ data class GameTurboSettings(
     val forceGpuOpenGl: Boolean = false,
     val enableSkiaVulkan: Boolean = false,
     val highPerfFpsControl: Boolean = false,
+    // New Performance Engine Controls
+    val optimizeFramePacing: Boolean = true,
+    val enableAdpfHints: Boolean = true,
+    val disablePowerSavingInGame: Boolean = true,
+    val smartBackgroundControl: Boolean = true,
+    val displayResolutionOpt: Boolean = false,
+    val preferredDisplayModeId: Int = 0,
+    val sustainedPerformanceMode: Boolean = false,
+    val autoPerformanceOptimization: Boolean = false,
     // RAM Settings
     val backgroundLimitIndex: Int = 0, // 0=Default, 1=No background, 2=At most 1, 3=At most 2, 4=At most 3
     val cacheLimitIndex: Int = 0, // 0=Default, 1=Minimal, 2=Strict

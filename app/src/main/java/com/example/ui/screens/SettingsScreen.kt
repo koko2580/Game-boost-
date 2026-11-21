@@ -31,12 +31,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import com.example.BuildConfig
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +74,7 @@ import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberElevated
 import com.example.ui.theme.CyberSlate
 import com.example.ui.theme.LocalTurboAccent
+import com.example.ui.theme.MidnightSurface
 import com.example.ui.theme.ObsidianVoid
 import com.example.ui.theme.RajdhaniFontFamily
 import com.example.ui.theme.TextMuted
@@ -357,9 +361,10 @@ private fun SettingsCategoryDetail(
                 )
                 SettingToggleRow(
                     title = "Disable three-finger screenshot function",
-                    subtitle = "Disable three-finger screenshot function for devices with three-finger screenshot gesture.",
+                    subtitle = "Blocks three-finger gesture triggers inside Turbo X cockpit and floating overlays.",
                     checked = settings.disableThreeFingerScreenshot,
-                    onCheckedChange = { v -> onUpdateSettings { it.copy(disableThreeFingerScreenshot = v) } }
+                    onCheckedChange = { v -> onUpdateSettings { it.copy(disableThreeFingerScreenshot = v) } },
+                    testTag = "toggle_three_finger_guard"
                 )
             }
         }
@@ -446,6 +451,13 @@ private fun SettingsCategoryDetail(
                     subtitle = "Open all animations in the app including the home page.",
                     checked = settings.homeAnimation,
                     onCheckedChange = { v -> onUpdateSettings { it.copy(homeAnimation = v) } }
+                )
+                SettingToggleRow(
+                    title = "Auto-detect game launch",
+                    subtitle = "Automatically apply Turbo Boost and floating HUD when an added game comes to foreground (requires Usage Access).",
+                    checked = settings.autoDetectGameLaunch,
+                    onCheckedChange = { v -> onUpdateSettings { it.copy(autoDetectGameLaunch = v) } },
+                    testTag = "toggle_auto_detect_game"
                 )
                 SettingToggleRow(
                     title = "RAM and CPU-saving mode for UI rendering: Game Mode",
@@ -591,6 +603,8 @@ private fun RamSettingsSection(
     onClearCache: () -> Unit
 ) {
     val accent = LocalTurboAccent.current.accent
+    var helpDialogTitle by remember { mutableStateOf<String?>(null) }
+    var helpDialogBody by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -616,7 +630,11 @@ private fun RamSettingsSection(
             description = "Target background process retention profile during Game Mode.",
             accentColor = accent,
             onIndexChange = { idx -> onUpdateSettings { it.copy(backgroundLimitIndex = idx) } },
-            onHelpClick = {}
+            onHelpClick = {
+                helpDialogTitle = "Background Process Limit"
+                helpDialogBody = "Controls how many non-game background apps are retained when Booster runs. 'No background' trims all non-protected background apps; 1-3 keeps the top recent apps active."
+            },
+            helpTestTag = "ram_bg_limit_help"
         )
 
         DiscreteSliderRow(
@@ -626,7 +644,11 @@ private fun RamSettingsSection(
             description = "Controls how aggressively temporary app caches are trimmed.",
             accentColor = accent,
             onIndexChange = { idx -> onUpdateSettings { it.copy(cacheLimitIndex = idx) } },
-            onHelpClick = {}
+            onHelpClick = {
+                helpDialogTitle = "Cache Clearing Policy"
+                helpDialogBody = "Default clears internal app/code cache. Minimal also clears external caches and shrinks icon caches. Strict evicts all cached bitmaps and temporary caches."
+            },
+            helpTestTag = "ram_cache_limit_help"
         )
 
         Button(
@@ -669,6 +691,23 @@ private fun RamSettingsSection(
             text = "Clear temporary app caches, which helps your phone run smoother.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextMuted
+        )
+    }
+
+    if (helpDialogTitle != null) {
+        AlertDialog(
+            onDismissRequest = { helpDialogTitle = null },
+            containerColor = MidnightSurface,
+            title = { Text(helpDialogTitle ?: "", color = TextPrimary) },
+            text = { Text(helpDialogBody, color = TextSecondary) },
+            confirmButton = {
+                TextButton(
+                    onClick = { helpDialogTitle = null },
+                    modifier = Modifier.testTag("ram_help_dialog_ok")
+                ) {
+                    Text("OK")
+                }
+            }
         )
     }
 }
@@ -742,7 +781,11 @@ private fun AboutAppSection(
             style = MaterialTheme.typography.headlineMedium.copy(fontFamily = RajdhaniFontFamily),
             color = accent
         )
-        Text("Version 2.0 • Cyber HUD & Game Launcher", style = MaterialTheme.typography.bodyLarge, color = TextPrimary)
+        Text(
+            text = "Version ${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE}) • Cyber HUD & Game Launcher",
+            style = MaterialTheme.typography.bodyLarge,
+            color = TextPrimary
+        )
         HorizontalDivider(color = CyberBorder.copy(alpha = 0.5f))
         InfoRow("Device Model", telemetry.deviceModel)
         InfoRow("Android Version", "Android ${telemetry.androidVersion}")

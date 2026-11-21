@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.BuildConfig
 import com.example.TurboGameApplication
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.MidnightSurface
@@ -230,7 +231,9 @@ class AdMobManager(private val appContext: Context) {
         bannerFailures++
         val backoff = AdLoadPolicy.computeBackoffMs(error.code, error.message, bannerFailures)
         bannerNextAllowedElapsedMs = SystemClock.elapsedRealtime() + backoff
-        Log.w("AdMobBannerBar", "Banner paused ${backoff / 1000}s after error code ${error.code}")
+        if (BuildConfig.DEBUG) {
+            Log.w("AdMobBannerBar", "Banner paused ${backoff / 1000}s after error code ${error.code}")
+        }
     }
     // endregion
 
@@ -262,7 +265,7 @@ class AdMobManager(private val appContext: Context) {
                     appOpenNextAllowedElapsedMs = 0L
                     appOpenRetryRunnable?.let { mainHandler.removeCallbacks(it) }
                     appOpenRetryRunnable = null
-                    Log.d(TAG, "AppOpenAd loaded")
+                    if (BuildConfig.DEBUG) Log.d(TAG, "AppOpenAd loaded")
                 }
 
                 override fun onAdFailedToLoad(error: LoadAdError) {
@@ -270,7 +273,7 @@ class AdMobManager(private val appContext: Context) {
                     appOpenFailures++
                     val backoff = AdLoadPolicy.computeBackoffMs(error.code, error.message, appOpenFailures)
                     appOpenNextAllowedElapsedMs = SystemClock.elapsedRealtime() + backoff
-                    Log.w(TAG, "AppOpenAd deferred ${backoff / 1000}s (code ${error.code})")
+                    if (BuildConfig.DEBUG) Log.w(TAG, "AppOpenAd deferred ${backoff / 1000}s (code ${error.code})")
                     if (appOpenFailures <= MAX_AUTO_RETRIES) {
                         appOpenRetryRunnable?.let { mainHandler.removeCallbacks(it) }
                         val runnable = Runnable { loadAppOpenAd() }
@@ -350,7 +353,7 @@ class AdMobManager(private val appContext: Context) {
                     interstitialNextAllowedElapsedMs = 0L
                     interstitialRetryRunnable?.let { mainHandler.removeCallbacks(it) }
                     interstitialRetryRunnable = null
-                    Log.d(TAG, "InterstitialAd loaded")
+                    if (BuildConfig.DEBUG) Log.d(TAG, "InterstitialAd loaded")
                 }
 
                 override fun onAdFailedToLoad(error: LoadAdError) {
@@ -359,7 +362,7 @@ class AdMobManager(private val appContext: Context) {
                     interstitialFailures++
                     val backoff = AdLoadPolicy.computeBackoffMs(error.code, error.message, interstitialFailures)
                     interstitialNextAllowedElapsedMs = SystemClock.elapsedRealtime() + backoff
-                    Log.w(TAG, "InterstitialAd deferred ${backoff / 1000}s (code ${error.code})")
+                    if (BuildConfig.DEBUG) Log.w(TAG, "InterstitialAd deferred ${backoff / 1000}s (code ${error.code})")
                     if (interstitialFailures <= MAX_AUTO_RETRIES) {
                         interstitialRetryRunnable?.let { mainHandler.removeCallbacks(it) }
                         val runnable = Runnable { loadInterstitialAd() }
@@ -498,7 +501,7 @@ class AdMobManager(private val appContext: Context) {
                     _rewardedAdReady.value = true
                     _rewardedAdLoading.value = false
                     _rewardedAdError.value = null
-                    Log.d(TAG, "RewardedAd loaded")
+                    if (BuildConfig.DEBUG) Log.d(TAG, "RewardedAd loaded")
                     onLoadedCallback?.invoke()
                 }
 
@@ -511,7 +514,7 @@ class AdMobManager(private val appContext: Context) {
                     _rewardedAdLoading.value = false
                     _rewardedAdError.value = AdLoadPolicy.sanitizeUserErrorMessage(error.code, error.message)
                     startRewardedCooldownTicker()
-                    Log.w(TAG, "RewardedAd deferred ${backoffMs / 1000}s (code ${error.code})")
+                    if (BuildConfig.DEBUG) Log.w(TAG, "RewardedAd deferred ${backoffMs / 1000}s (code ${error.code})")
 
                     if (rewardedFailures <= MAX_AUTO_RETRIES) {
                         rewardedRetryRunnable?.let { mainHandler.removeCallbacks(it) }

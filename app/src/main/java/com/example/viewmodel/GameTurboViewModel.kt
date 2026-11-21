@@ -10,6 +10,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.TurboGameApplication
 import com.example.ads.AdMobManager
 import com.example.data.AD_REWARD_DURATION_MS
+import com.example.data.BoostStepId
+import com.example.data.BoostStepStatus
 import com.example.data.ControlPanelLayout
 import com.example.data.CpuMode
 import com.example.data.CpuUnitFormat
@@ -21,6 +23,8 @@ import com.example.data.GameTurboPreferencesRepository
 import com.example.data.GameTurboSettings
 import com.example.data.HardwareTelemetry
 import com.example.data.InstalledAppInfo
+import com.example.data.OneTapBoosterState
+import com.example.data.OneTapStepResult
 import com.example.data.PerformanceEngineStatus
 import com.example.data.PermissionStatus
 import com.example.data.ScreenColorMode
@@ -32,6 +36,7 @@ import com.example.security.SecurityAuditReport
 import com.example.service.GameOverlayService
 import com.example.service.ScreenCaptureActivity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -147,6 +152,11 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     private val _prefsLoaded = MutableStateFlow(false)
     val prefsLoaded: StateFlow<Boolean> = _prefsLoaded.asStateFlow()
 
+    private val _oneTapBooster = MutableStateFlow(OneTapBoosterState())
+    val oneTapBooster: StateFlow<OneTapBoosterState> = _oneTapBooster.asStateFlow()
+
+    private var oneTapJob: Job? = null
+
     private val networkMonitor = NetworkGateMonitor(application)
     val isNetworkConnected: StateFlow<Boolean> = networkMonitor.isConnected
 
@@ -229,13 +239,18 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun syncWindowPerformance(activity: Activity) {
+        val t = _telemetry.value
         hardware.performanceEngine.applyProfile(
             settings = settings.value,
-            supportedRates = _telemetry.value.supportedRefreshRates,
+            supportedRates = t.supportedRefreshRates,
             activity = activity,
-            isInGameLaunch = false
+            isInGameLaunch = false,
+            batteryPercent = t.batteryPercent,
+            isCharging = t.isCharging
         )
     }
+
+    private var lastAutoDetectedPackage: String? = null
 
     fun refreshPermissionsAndHardware() {
         _permissions.value = hardware.checkPermissions()
@@ -244,6 +259,40 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         _autoBrightness.value = hardware.isAutoBrightnessEnabled()
         _autoRotate.value = hardware.isAutoRotateEnabled()
         _isOverlayServiceRunning.value = GameOverlayService.isRunning
+    }
+
+    fun checkForegroundGameAutoLaunch() {
+        val current = settings.value
+        val fgPkg = hardware.getForegroundPackageName()
+        if (fgPkg != null && fgPkg !in current.addedGamePackages && fgPkg != getApplication<Application>().packageName) {
+            lastAutoDetectedPackage = null
+        }
+        val triggered = SystemHardwareController.evaluateForegroundGameTrigger(
+            foregroundPkg = fgPkg,
+            lastDetectedPkg = lastAutoDetectedPackage,
+            settings = current,
+            ownPackage = getApplication<Application>().packageName
+        ) ?: return
+        lastAutoDetectedPackage = triggered
+        if (current.autoDndOnEnter || current.dndMode) {
+            hardware.setDoNotDisturb(true)
+        }
+        if (current.muteNotificationsInGame || current.notificationMuteMode) {
+            hardware.audioEnhancer.setNotificationMuted(true)
+        }
+        val t = _telemetry.value
+        hardware.performanceEngine.applyProfile(
+            settings = current,
+            supportedRates = t.supportedRefreshRates,
+            isInGameLaunch = true,
+            batteryPercent = t.batteryPercent,
+            isCharging = t.isCharging
+        )
+        if (hardware.checkPermissions().overlayGranted && !GameOverlayService.isRunning) {
+            startFloatingOverlayService()
+        }
+        val appName = addedGames.value.find { it.packageName == triggered }?.appName ?: triggered
+        showStatus("Auto-detected $appName: Turbo Boost Active")
     }
 
     fun completePermissionSetup() {
@@ -298,6 +347,25 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
                 _telemetry.value = snapshot
                 _volumeFraction.value = hardware.getVolumeFraction()
                 _isOverlayServiceRunning.value = GameOverlayService.isRunning
+
+                val currentSettings = settings.value
+                if (currentSettings.autoPerformanceOptimization) {
+                    val decision = hardware.performanceEngine.evaluateAutoPerformance(
+                        batteryPercent = snapshot.batteryPercent,
+                        isCharging = snapshot.isCharging
+                    )
+                    if (currentSettings.cpuMode != decision.recommendedCpuMode ||
+                        currentSettings.sustainedPerformanceMode != decision.recommendSustained
+                    ) {
+                        repo.updateSettings { s ->
+                            if (!s.autoPerformanceOptimization) s
+                            else s.copy(
+                                cpuMode = decision.recommendedCpuMode,
+                                sustainedPerformanceMode = decision.recommendSustained
+                            )
+                        }
+                    }
+                }
                 delay(1200L)
             }
         }
@@ -508,9 +576,12 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
             if (next.dndMode != prev.dndMode) {
                 hardware.setDoNotDisturb(next.dndMode)
             }
+            val t = _telemetry.value
             hardware.performanceEngine.applyProfile(
                 settings = next,
-                supportedRates = _telemetry.value.supportedRefreshRates
+                supportedRates = t.supportedRefreshRates,
+                batteryPercent = t.batteryPercent,
+                isCharging = t.isCharging
             )
         }
     }
@@ -578,9 +649,12 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         }
         if (enabled) {
             viewModelScope.launch {
+                val cur = settings.value
                 val res = hardware.performRealMemoryBoost(
-                    protectedPackages = settings.value.addedGamePackages,
-                    allKnownPackages = _installedApps.value.map { it.packageName }
+                    protectedPackages = cur.addedGamePackages,
+                    allKnownPackages = _installedApps.value.map { it.packageName },
+                    backgroundLimitIndex = cur.backgroundLimitIndex,
+                    cacheLimitIndex = cur.cacheLimitIndex
                 )
                 showStatus("CPU Boost Active (ADPF) • Freed ${res.freedMb} MB")
             }
@@ -648,6 +722,129 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         if (!openedDev) {
             showStatus("Enable Developer Options in About Phone -> Tap Build Number 7x")
         }
+    }
+
+    fun setOptimizeFramePacing(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(optimizeFramePacing = enabled) }
+        showStatus(
+            if (enabled) "Frame Pacing Optimization & Minimal Post-Processing ON"
+            else "Frame Pacing Optimization Off"
+        )
+    }
+
+    fun setEnableAdpfHints(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(enableAdpfHints = enabled) }
+        val adpfStatus = hardware.performanceEngine.status.value
+        showStatus(
+            when {
+                !enabled -> "ADPF PerformanceHintManager Disabled"
+                adpfStatus.adpfSupported -> "ADPF Performance Hints Enabled"
+                else -> "ADPF Preference Saved (Requires Android 12+ PowerHAL)"
+            }
+        )
+    }
+
+    fun setDisablePowerSavingInGame(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(disablePowerSavingInGame = enabled) }
+        val saverOn = hardware.performanceEngine.isBatterySaverActive()
+        showStatus(
+            when {
+                enabled && saverOn -> "Battery Saver is ON! Tap Power Settings below to disable for full FPS"
+                enabled -> "Gaming Battery Saver Guard Armed"
+                else -> "Battery Saver Guard Off"
+            }
+        )
+    }
+
+    fun openPowerSaverSettings() {
+        adMobManager?.suppressAppOpenTemporarily()
+        if (!hardware.performanceEngine.openPowerSaverSettings()) {
+            showStatus("Open Device Settings -> Battery to disable Battery Saver")
+        }
+    }
+
+    fun setSmartBackgroundControl(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(smartBackgroundControl = enabled, backgroundControlEnabled = enabled) }
+        showStatus(
+            if (enabled) "Smart Background Activity Control Enabled"
+            else "Smart Background Activity Control Paused"
+        )
+    }
+
+    fun runSmartBackgroundTrim() {
+        performBoost()
+    }
+
+    fun openAppManagementSettings() {
+        adMobManager?.suppressAppOpenTemporarily()
+        if (!hardware.performanceEngine.openAppManagementSettings()) {
+            showStatus("Open Device Settings -> Apps to manage background apps")
+        }
+    }
+
+    fun setDisplayResolutionOpt(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(displayResolutionOpt = enabled) }
+        val res = hardware.performanceEngine.status.value.currentResolutionLabel
+        showStatus(
+            if (enabled) "Display Resolution Optimizer Active ($res)"
+            else "Display Resolution Optimizer Off"
+        )
+    }
+
+    fun selectDisplayModeId(modeId: Int) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(displayResolutionOpt = true, preferredDisplayModeId = modeId) }
+        val match = hardware.performanceEngine.status.value.supportedResolutionModes.firstOrNull { it.modeId == modeId }
+        showStatus(
+            if (match != null) "Display Mode: ${match.label}" else "Preferred Display Mode Updated"
+        )
+    }
+
+    fun openDisplaySettings() {
+        adMobManager?.suppressAppOpenTemporarily()
+        if (!hardware.performanceEngine.openDisplaySettings()) {
+            showStatus("Open Device Settings -> Display for system resolution options")
+        }
+    }
+
+    fun setSustainedPerformanceMode(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(sustainedPerformanceMode = enabled) }
+        val supported = hardware.performanceEngine.status.value.sustainedPerformanceSupported
+        showStatus(
+            when {
+                !enabled -> "Sustained Performance Mode Off"
+                supported -> "Android Sustained Performance Mode Engaged"
+                else -> "Sustained Mode Saved (Not reported supported on this device)"
+            }
+        )
+    }
+
+    fun setAutoPerformanceOptimization(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(enabled)
+        if (!enabled) {
+            updateSettings { it.copy(autoPerformanceOptimization = false) }
+            showStatus("Auto Performance Optimization Off (Manual profile)")
+            return
+        }
+        val t = _telemetry.value
+        val decision = hardware.performanceEngine.evaluateAutoPerformance(
+            batteryPercent = t.batteryPercent,
+            isCharging = t.isCharging
+        )
+        updateSettings {
+            it.copy(
+                autoPerformanceOptimization = true,
+                cpuMode = decision.recommendedCpuMode,
+                sustainedPerformanceMode = decision.recommendSustained
+            )
+        }
+        showStatus("Auto Optimize: ${decision.reasonLabel}")
     }
 
     fun toggleGameAdded(packageName: String) {
@@ -774,13 +971,309 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun dismissOneTapBooster() {
+        oneTapJob?.cancel()
+        oneTapJob = null
+        _oneTapBooster.value = _oneTapBooster.value.copy(isVisible = false, isRunning = false)
+    }
+
+    fun runOneTapBooster(stepDelayMs: Long = 220L) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        oneTapJob?.cancel()
+        oneTapJob = viewModelScope.launch {
+            val initialSteps = OneTapBoosterState.defaultSteps()
+            _oneTapBooster.value = OneTapBoosterState(
+                isVisible = true,
+                isRunning = true,
+                isCompleted = false,
+                currentStepIndex = 0,
+                progress = 0.06f,
+                steps = updateStepList(
+                    initialSteps,
+                    BoostStepId.DEVICE_SCAN,
+                    BoostStepStatus.RUNNING,
+                    "Scanning"
+                )
+            )
+            if (stepDelayMs > 0L) delay(stepDelayMs)
+
+            // STEP 1: Device Performance Scan (CPU, RAM, Battery, Thermal)
+            val currentMode = settings.value.cpuMode
+            val scanTelemetry = withContext(Dispatchers.Default) {
+                hardware.readHardwareTelemetry(
+                    cpuMode = currentMode,
+                    lastPingMs = lastPingMs,
+                    lastJitterMs = lastJitterMs,
+                    actualFps = measuredFps,
+                    frameTimeMs = measuredFrameMs
+                )
+            }
+            _telemetry.value = scanTelemetry
+            val scanThermal = hardware.performanceEngine.readThermalStatusLabel()
+            val scanDetail = "${scanTelemetry.cpuFreqMHz}MHz (${scanTelemetry.cpuCoreCount}C) • RAM ${scanTelemetry.ramUsedPercent}% • Bat ${scanTelemetry.batteryPercent}% • ${scanTelemetry.batteryTempCelsius}°C"
+
+            var steps = updateStepList(
+                _oneTapBooster.value.steps,
+                BoostStepId.DEVICE_SCAN,
+                BoostStepStatus.DONE,
+                "${scanTelemetry.cpuFreqMHz}MHz",
+                scanDetail
+            )
+            steps = updateStepList(steps, BoostStepId.MEMORY_OPTIMIZATION, BoostStepStatus.RUNNING, "Analyzing")
+            _oneTapBooster.value = _oneTapBooster.value.copy(
+                currentStepIndex = 1,
+                progress = 0.22f,
+                steps = steps,
+                scanCpuMHz = scanTelemetry.cpuFreqMHz,
+                scanCpuCores = scanTelemetry.cpuCoreCount,
+                ramUsedBeforePercent = scanTelemetry.ramUsedPercent,
+                thermalLabel = scanThermal,
+                batteryTempC = scanTelemetry.batteryTempCelsius,
+                batteryPercent = scanTelemetry.batteryPercent,
+                isCharging = scanTelemetry.isCharging
+            )
+            if (stepDelayMs > 0L) delay(stepDelayMs)
+
+            // STEP 2: Memory Optimization (Pressure Check + Advice + Real Memory Trim)
+            val (pressureLabel, pressureAdvice) = hardware.performanceEngine.evaluateMemoryPressure(scanTelemetry.ramUsedPercent)
+            val allPackages = _installedApps.value.map { it.packageName }
+            val curBoostSettings = settings.value
+            val boostRes = hardware.performRealMemoryBoost(
+                protectedPackages = curBoostSettings.addedGamePackages,
+                allKnownPackages = allPackages,
+                backgroundLimitIndex = curBoostSettings.backgroundLimitIndex,
+                cacheLimitIndex = curBoostSettings.cacheLimitIndex
+            )
+            val afterTelemetry = withContext(Dispatchers.Default) {
+                hardware.readHardwareTelemetry(
+                    cpuMode = currentMode,
+                    lastPingMs = lastPingMs,
+                    lastJitterMs = lastJitterMs,
+                    actualFps = measuredFps,
+                    frameTimeMs = measuredFrameMs
+                )
+            }
+            _telemetry.value = afterTelemetry
+            val memStatus = if (pressureLabel == "CRITICAL") BoostStepStatus.WARNING else BoostStepStatus.DONE
+            val memDetail = "$pressureLabel pressure • Freed ${boostRes.freedMb}MB (${boostRes.trimmedPackages} apps, ${boostRes.clearedCacheKb}KB cache). $pressureAdvice"
+
+            steps = updateStepList(
+                steps,
+                BoostStepId.MEMORY_OPTIMIZATION,
+                memStatus,
+                "+${boostRes.freedMb} MB",
+                memDetail
+            )
+            steps = updateStepList(steps, BoostStepId.THERMAL_PROTECTION, BoostStepStatus.RUNNING, "Checking")
+            _oneTapBooster.value = _oneTapBooster.value.copy(
+                currentStepIndex = 2,
+                progress = 0.42f,
+                steps = steps,
+                ramUsedAfterPercent = afterTelemetry.ramUsedPercent,
+                memoryPressureLabel = pressureLabel,
+                memoryAdvice = pressureAdvice,
+                freedMb = boostRes.freedMb,
+                trimmedApps = boostRes.trimmedPackages,
+                clearedCacheKb = boostRes.clearedCacheKb
+            )
+            if (stepDelayMs > 0L) delay(stepDelayMs)
+
+            // STEP 3: Thermal Protection
+            val sustainedSupported = hardware.performanceEngine.isSustainedPerformanceSupported()
+            val thermalHot = scanThermal == "HIGH" || scanThermal == "THROTTLED" || scanThermal == "MODERATE" || afterTelemetry.batteryTempCelsius >= 39.5f
+            val thermalStatus = if (scanThermal == "HIGH" || scanThermal == "THROTTLED") BoostStepStatus.WARNING else BoostStepStatus.DONE
+            val thermalAdvice = when {
+                scanThermal == "HIGH" || scanThermal == "THROTTLED" ->
+                    "High thermal load (${afterTelemetry.batteryTempCelsius}°C, $scanThermal) — Sustained Thermal Guard engaged."
+                thermalHot ->
+                    "Warm state (${afterTelemetry.batteryTempCelsius}°C, $scanThermal) — balancing sustained clocks to prevent throttling."
+                else ->
+                    "Optimal thermals (${afterTelemetry.batteryTempCelsius}°C, $scanThermal) — full thermal headroom unlocked."
+            }
+            steps = updateStepList(
+                steps,
+                BoostStepId.THERMAL_PROTECTION,
+                thermalStatus,
+                "${afterTelemetry.batteryTempCelsius}°C",
+                thermalAdvice
+            )
+            steps = updateStepList(steps, BoostStepId.POWER_OPTIMIZATION, BoostStepStatus.RUNNING, "Inspecting")
+            _oneTapBooster.value = _oneTapBooster.value.copy(
+                currentStepIndex = 3,
+                progress = 0.60f,
+                steps = steps,
+                thermalLabel = scanThermal,
+                batteryTempC = afterTelemetry.batteryTempCelsius,
+                thermalAdvice = thermalAdvice
+            )
+            if (stepDelayMs > 0L) delay(stepDelayMs)
+
+            // STEP 4: Power Optimization (Battery Saver & Exemption Check)
+            val (batterySaverOn, ignoringBatteryOpt) = hardware.performanceEngine.detectBatterySaverState()
+            val powerStatus = if (batterySaverOn) BoostStepStatus.WARNING else BoostStepStatus.DONE
+            val powerAdvice = when {
+                batterySaverOn ->
+                    "Battery Saver is ON (restricts CPU/FPS). Tap 'Open Power Settings' in Report to disable for peak speed."
+                ignoringBatteryOpt ->
+                    "Battery Saver OFF • Turbo X battery optimization exempted (${afterTelemetry.batteryPercent}%)."
+                else ->
+                    "Battery Saver OFF • Standard power active (${afterTelemetry.batteryPercent}%${if (afterTelemetry.isCharging) ", Charging" else ""})."
+            }
+            steps = updateStepList(
+                steps,
+                BoostStepId.POWER_OPTIMIZATION,
+                powerStatus,
+                if (batterySaverOn) "Saver ON" else "${afterTelemetry.batteryPercent}% OK",
+                powerAdvice
+            )
+            steps = updateStepList(steps, BoostStepId.GAMING_PROFILE, BoostStepStatus.RUNNING, "Tuning")
+            _oneTapBooster.value = _oneTapBooster.value.copy(
+                currentStepIndex = 4,
+                progress = 0.78f,
+                steps = steps,
+                batterySaverActive = batterySaverOn,
+                ignoringBatteryOpt = ignoringBatteryOpt,
+                powerAdvice = powerAdvice
+            )
+            if (stepDelayMs > 0L) delay(stepDelayMs)
+
+            // STEP 5: Gaming Profile Selection & Application
+            val autoDecision = hardware.performanceEngine.evaluateAutoPerformance(
+                batteryPercent = afterTelemetry.batteryPercent,
+                isCharging = afterTelemetry.isCharging
+            )
+            val useSustained = autoDecision.recommendSustained || (thermalHot && sustainedSupported)
+            val nextSettingsSnapshot = settings.value.copy(
+                cpuMode = autoDecision.recommendedCpuMode,
+                sustainedPerformanceMode = useSustained,
+                optimizeFramePacing = true,
+                enableAdpfHints = true,
+                disablePowerSavingInGame = true,
+                increaseCpuPerformance = autoDecision.recommendedCpuMode == CpuMode.ACCELERATION,
+                totalBoostCount = settings.value.totalBoostCount + 1,
+                lastFreedMb = boostRes.freedMb
+            )
+            repo.updateSettings {
+                it.copy(
+                    cpuMode = nextSettingsSnapshot.cpuMode,
+                    sustainedPerformanceMode = nextSettingsSnapshot.sustainedPerformanceMode,
+                    optimizeFramePacing = true,
+                    enableAdpfHints = true,
+                    disablePowerSavingInGame = true,
+                    increaseCpuPerformance = nextSettingsSnapshot.increaseCpuPerformance,
+                    totalBoostCount = it.totalBoostCount + 1,
+                    lastFreedMb = boostRes.freedMb
+                )
+            }
+            hardware.performanceEngine.applyProfile(
+                settings = nextSettingsSnapshot,
+                supportedRates = afterTelemetry.supportedRefreshRates,
+                batteryPercent = afterTelemetry.batteryPercent,
+                isCharging = afterTelemetry.isCharging
+            )
+            val profileLabel = "${autoDecision.recommendedCpuMode.label} • ADPF + Frame Pacing"
+            steps = updateStepList(
+                steps,
+                BoostStepId.GAMING_PROFILE,
+                BoostStepStatus.DONE,
+                autoDecision.recommendedCpuMode.label,
+                "${autoDecision.reasonLabel} • Frame Pacing & ADPF active"
+            )
+            steps = updateStepList(steps, BoostStepId.FINAL_REPORT, BoostStepStatus.RUNNING, "Finalizing")
+            _oneTapBooster.value = _oneTapBooster.value.copy(
+                currentStepIndex = 5,
+                progress = 0.92f,
+                steps = steps,
+                selectedCpuMode = autoDecision.recommendedCpuMode,
+                sustainedEnabled = useSustained,
+                appliedProfileLabel = profileLabel
+            )
+            if (stepDelayMs > 0L) delay(stepDelayMs)
+
+            // STEP 6: Final Performance Report
+            val score = computeBoosterScore(
+                ramAfterPercent = afterTelemetry.ramUsedPercent,
+                thermalLabel = scanThermal,
+                batterySaverOn = batterySaverOn,
+                freedMb = boostRes.freedMb
+            )
+            val verdict = when {
+                batterySaverOn -> "POWER SAVER LIMIT"
+                scanThermal == "HIGH" || scanThermal == "THROTTLED" -> "THERMAL GUARDED"
+                score >= 85 -> "BATTLE READY"
+                else -> "OPTIMIZED"
+            }
+            steps = updateStepList(
+                steps,
+                BoostStepId.FINAL_REPORT,
+                if (batterySaverOn) BoostStepStatus.WARNING else BoostStepStatus.DONE,
+                "$score/100",
+                "Freed ${boostRes.freedMb} MB • $profileLabel • Verdict: $verdict"
+            )
+            hardware.audioEnhancer.playTacticalTone()
+            hardware.audioEnhancer.pulseHaptic(true)
+            _oneTapBooster.value = _oneTapBooster.value.copy(
+                isRunning = false,
+                isCompleted = true,
+                currentStepIndex = 5,
+                progress = 1f,
+                steps = steps,
+                finalScore = score,
+                finalVerdict = verdict
+            )
+            showStatus("One Tap Complete • Freed ${boostRes.freedMb} MB • Score $score/100")
+        }
+    }
+
+    private fun updateStepList(
+        current: List<OneTapStepResult>,
+        targetId: BoostStepId,
+        status: BoostStepStatus,
+        badge: String,
+        detail: String? = null
+    ): List<OneTapStepResult> = current.map { item ->
+        if (item.id == targetId) {
+            item.copy(
+                status = status,
+                metricBadge = badge,
+                detail = detail ?: item.detail
+            )
+        } else {
+            item
+        }
+    }
+
+    private fun computeBoosterScore(
+        ramAfterPercent: Int,
+        thermalLabel: String,
+        batterySaverOn: Boolean,
+        freedMb: Int
+    ): Int {
+        var score = 100
+        if (ramAfterPercent >= 85) score -= 18
+        else if (ramAfterPercent >= 70) score -= 9
+        else if (ramAfterPercent >= 55) score -= 4
+
+        when (thermalLabel) {
+            "THROTTLED", "HIGH" -> score -= 16
+            "MODERATE" -> score -= 8
+            "WARM" -> score -= 3
+        }
+        if (batterySaverOn) score -= 18
+        if (freedMb >= 32) score += 2
+        return score.coerceIn(45, 100)
+    }
+
     fun performBoost() {
         hardware.audioEnhancer.pulseHaptic(true)
         viewModelScope.launch {
+            val cur = settings.value
             val allPackages = _installedApps.value.map { it.packageName }
             val result = hardware.performRealMemoryBoost(
-                protectedPackages = settings.value.addedGamePackages,
-                allKnownPackages = allPackages
+                protectedPackages = cur.addedGamePackages,
+                allKnownPackages = allPackages,
+                backgroundLimitIndex = cur.backgroundLimitIndex,
+                cacheLimitIndex = cur.cacheLimitIndex
             )
             updateSettings {
                 it.copy(
@@ -809,7 +1302,7 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     fun clearCache() {
         hardware.audioEnhancer.pulseHaptic(false)
         viewModelScope.launch {
-            val freedKb = hardware.clearAppCaches()
+            val freedKb = hardware.clearAppCaches(settings.value.cacheLimitIndex)
             showStatus("Cache cleared — ${freedKb} KB reclaimed")
         }
     }
@@ -1007,16 +1500,24 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         if (s.effectSoundEnabled && s.eqPreset != EqPreset.OFF) {
             hardware.audioEnhancer.applyEqPreset(true, s.eqPreset)
         }
+        val t = _telemetry.value
         hardware.performanceEngine.applyProfile(
             settings = s,
-            supportedRates = _telemetry.value.supportedRefreshRates,
-            isInGameLaunch = true
+            supportedRates = t.supportedRefreshRates,
+            isInGameLaunch = true,
+            batteryPercent = t.batteryPercent,
+            isCharging = t.isCharging
         )
-        if (s.preventMemoryLeaks || s.increaseCpuPerformance || s.increaseGpuPerformance || s.highPerfFpsControl) {
+        if (s.disablePowerSavingInGame && hardware.performanceEngine.isBatterySaverActive()) {
+            showStatus("Battery Saver detected — disable Power Saving for max FPS")
+        }
+        if (s.preventMemoryLeaks || s.smartBackgroundControl || s.increaseCpuPerformance || s.increaseGpuPerformance || s.highPerfFpsControl) {
             val allPkgs = _installedApps.value.map { it.packageName }
             hardware.performRealMemoryBoost(
                 protectedPackages = s.addedGamePackages + pkg,
-                allKnownPackages = allPkgs
+                allKnownPackages = allPkgs,
+                backgroundLimitIndex = s.backgroundLimitIndex,
+                cacheLimitIndex = s.cacheLimitIndex
             )
         }
         if (hardware.checkPermissions().overlayGranted) {

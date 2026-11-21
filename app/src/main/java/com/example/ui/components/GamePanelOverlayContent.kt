@@ -399,6 +399,8 @@ fun GamePanelOverlayContent(
                         cpuDisplayUnit = cpuDisplayUnit,
                         brightnessFraction = brightnessFraction,
                         volumeFraction = volumeFraction,
+                        stopwatchSeconds = stopwatchSeconds,
+                        isStopwatchRunning = isStopwatchRunning,
                         statusMessage = statusMessage,
                         leftTools = leftTools,
                         rightTiles = rightTiles,
@@ -414,6 +416,8 @@ fun GamePanelOverlayContent(
                         cpuDisplayUnit = cpuDisplayUnit,
                         brightnessFraction = brightnessFraction,
                         volumeFraction = volumeFraction,
+                        stopwatchSeconds = stopwatchSeconds,
+                        isStopwatchRunning = isStopwatchRunning,
                         statusMessage = statusMessage,
                         leftTools = leftTools,
                         rightTiles = rightTiles,
@@ -854,6 +858,7 @@ fun GamePanelOverlayContent(
                     }
                     Box(
                         modifier = Modifier
+                            .testTag("overlay_g_handle")
                             .clip(RoundedCornerShape(10.dp))
                             .background(panelAccent)
                             .clickable { callbacks.onMinimizeClick() }

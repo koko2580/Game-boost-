@@ -814,27 +814,27 @@ private fun CockpitHeroCard(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Quick Boost Pill
+            // One Tap Booster Pill
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
                 modifier = Modifier
                     .testTag("hero_quick_boost_btn")
-                    .height(40.dp)
+                    .height(48.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(animatedAccent.copy(alpha = 0.14f))
-                    .border(1.dp, animatedAccent.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .background(animatedAccent.copy(alpha = 0.16f))
+                    .border(1.dp, animatedAccent.copy(alpha = 0.65f), RoundedCornerShape(12.dp))
                     .clickable { onBoostRam() }
                     .padding(horizontal = 12.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Bolt,
-                    contentDescription = "Quick RAM Boost",
+                    imageVector = Icons.Rounded.RocketLaunch,
+                    contentDescription = "Run One Tap Booster",
                     tint = animatedAccent,
                     modifier = Modifier.size(16.dp)
                 )
                 Text(
-                    text = "BOOST",
+                    text = "ONE TAP",
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontWeight = FontWeight.Bold,
@@ -1690,7 +1690,7 @@ private fun TelemetryPageContent(
             ) {
                 Icon(Icons.Rounded.RocketLaunch, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Boost (${settings.totalBoostCount})")
+                Text("One Tap (${settings.totalBoostCount})")
             }
             Button(
                 onClick = onRunPingTest,

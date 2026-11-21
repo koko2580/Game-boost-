@@ -40,6 +40,44 @@ import kotlin.math.abs
 
 class SystemHardwareController(private val context: Context) {
 
+    companion object {
+        fun selectPackagesToTrim(
+            allKnownPackages: List<String>,
+            runningAppPackages: List<String>,
+            protectedPackages: Set<String>,
+            ownPackage: String,
+            backgroundLimitIndex: Int
+        ): List<String> {
+            val candidates = (runningAppPackages + allKnownPackages)
+                .asSequence()
+                .map { it.trim() }
+                .filter { it.isNotBlank() && it != ownPackage && it !in protectedPackages }
+                .distinct()
+                .toList()
+            val retainCount = when (backgroundLimitIndex.coerceIn(0, 4)) {
+                1 -> 0 // No background processes retained
+                2 -> 1 // At most 1
+                3 -> 2 // At most 2
+                4 -> 3 // At most 3
+                else -> 0 // Default: trim background non-protected apps
+            }
+            return if (retainCount <= 0) candidates else candidates.drop(retainCount)
+        }
+
+        fun evaluateForegroundGameTrigger(
+            foregroundPkg: String?,
+            lastDetectedPkg: String?,
+            settings: GameTurboSettings,
+            ownPackage: String
+        ): String? {
+            if (!settings.autoDetectGameLaunch) return null
+            if (foregroundPkg.isNullOrBlank()) return null
+            if (foregroundPkg == ownPackage) return null
+            if (foregroundPkg == lastDetectedPkg) return null
+            return if (foregroundPkg in settings.addedGamePackages) foregroundPkg else null
+        }
+    }
+
     private val activityManager by lazy(LazyThreadSafetyMode.NONE) {
         context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
     }
@@ -410,25 +448,39 @@ class SystemHardwareController(private val context: Context) {
 
     suspend fun performRealMemoryBoost(
         protectedPackages: Set<String>,
-        allKnownPackages: List<String>
+        allKnownPackages: List<String>,
+        backgroundLimitIndex: Int = 0,
+        cacheLimitIndex: Int = 0
     ): BoostResult = withContext(Dispatchers.IO) {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val before = ActivityManager.MemoryInfo()
         am?.getMemoryInfo(before)
 
+        val runningPkgs = runCatching {
+            am?.runningAppProcesses
+                ?.flatMap { proc -> proc.pkgList?.toList() ?: listOf(proc.processName) }
+                ?: emptyList()
+        }.getOrDefault(emptyList())
+
+        val toTrim = selectPackagesToTrim(
+            allKnownPackages = allKnownPackages,
+            runningAppPackages = runningPkgs,
+            protectedPackages = protectedPackages,
+            ownPackage = context.packageName,
+            backgroundLimitIndex = backgroundLimitIndex
+        )
+
         var trimmedCount = 0
         if (am != null) {
-            for (pkg in allKnownPackages) {
-                if (pkg != context.packageName && pkg !in protectedPackages) {
-                    runCatching {
-                        am.killBackgroundProcesses(pkg)
-                        trimmedCount++
-                    }
+            for (pkg in toTrim) {
+                runCatching {
+                    am.killBackgroundProcesses(pkg)
+                    trimmedCount++
                 }
             }
         }
 
-        val freedCacheBytes = clearDirectoryBytes(context.cacheDir) + clearDirectoryBytes(context.codeCacheDir)
+        val freedCacheBytes = clearCachesInternal(cacheLimitIndex)
 
         val after = ActivityManager.MemoryInfo()
         am?.getMemoryInfo(after)
@@ -443,9 +495,25 @@ class SystemHardwareController(private val context: Context) {
         )
     }
 
-    suspend fun clearAppCaches(): Long = withContext(Dispatchers.IO) {
-        val freed = clearDirectoryBytes(context.cacheDir) + clearDirectoryBytes(context.codeCacheDir)
-        freed / 1024L
+    suspend fun clearAppCaches(cacheLimitIndex: Int = 0): Long = withContext(Dispatchers.IO) {
+        clearCachesInternal(cacheLimitIndex) / 1024L
+    }
+
+    private fun clearCachesInternal(cacheLimitIndex: Int): Long {
+        var freed = clearDirectoryBytes(context.cacheDir) + clearDirectoryBytes(context.codeCacheDir)
+        val tier = cacheLimitIndex.coerceIn(0, 2)
+        if (tier >= 1) {
+            val extCache = runCatching { context.externalCacheDir }.getOrNull()
+            freed += clearDirectoryBytes(extCache)
+            synchronized(iconCache) {
+                if (tier == 1) {
+                    iconCache.trimToSize(if (isLowRamDevice) 12 else 24)
+                } else {
+                    iconCache.evictAll()
+                }
+            }
+        }
+        return freed
     }
 
     private fun clearDirectoryBytes(dir: File?): Long {

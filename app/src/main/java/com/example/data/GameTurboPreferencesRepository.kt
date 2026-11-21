@@ -45,6 +45,14 @@ class GameTurboPreferencesRepository(private val context: Context) {
         val FORCE_OPENGL = booleanPreferencesKey("force_opengl")
         val ENABLE_VULKAN = booleanPreferencesKey("enable_vulkan")
         val HIGH_PERF_FPS = booleanPreferencesKey("high_perf_fps")
+        val OPTIMIZE_FRAME_PACING = booleanPreferencesKey("optimize_frame_pacing")
+        val ENABLE_ADPF_HINTS = booleanPreferencesKey("enable_adpf_hints")
+        val DISABLE_POWER_SAVING = booleanPreferencesKey("disable_power_saving_in_game")
+        val SMART_BG_CONTROL = booleanPreferencesKey("smart_background_control")
+        val DISPLAY_RES_OPT = booleanPreferencesKey("display_resolution_opt")
+        val PREFERRED_DISPLAY_MODE_ID = intPreferencesKey("preferred_display_mode_id")
+        val SUSTAINED_PERF_MODE = booleanPreferencesKey("sustained_performance_mode")
+        val AUTO_PERF_OPT = booleanPreferencesKey("auto_performance_optimization")
 
         val BG_LIMIT_INDEX = intPreferencesKey("bg_limit_index")
         val CACHE_LIMIT_INDEX = intPreferencesKey("cache_limit_index")
@@ -113,6 +121,14 @@ class GameTurboPreferencesRepository(private val context: Context) {
             prefs[Keys.FORCE_OPENGL] = updated.forceGpuOpenGl
             prefs[Keys.ENABLE_VULKAN] = updated.enableSkiaVulkan
             prefs[Keys.HIGH_PERF_FPS] = updated.highPerfFpsControl
+            prefs[Keys.OPTIMIZE_FRAME_PACING] = updated.optimizeFramePacing
+            prefs[Keys.ENABLE_ADPF_HINTS] = updated.enableAdpfHints
+            prefs[Keys.DISABLE_POWER_SAVING] = updated.disablePowerSavingInGame
+            prefs[Keys.SMART_BG_CONTROL] = updated.smartBackgroundControl
+            prefs[Keys.DISPLAY_RES_OPT] = updated.displayResolutionOpt
+            prefs[Keys.PREFERRED_DISPLAY_MODE_ID] = updated.preferredDisplayModeId
+            prefs[Keys.SUSTAINED_PERF_MODE] = updated.sustainedPerformanceMode
+            prefs[Keys.AUTO_PERF_OPT] = updated.autoPerformanceOptimization
             prefs[Keys.BG_LIMIT_INDEX] = updated.backgroundLimitIndex
             prefs[Keys.CACHE_LIMIT_INDEX] = updated.cacheLimitIndex
             prefs[Keys.WALLPAPER_THEME] = updated.wallpaperTheme.name
@@ -209,6 +225,14 @@ class GameTurboPreferencesRepository(private val context: Context) {
             forceGpuOpenGl = prefs[Keys.FORCE_OPENGL] ?: false,
             enableSkiaVulkan = prefs[Keys.ENABLE_VULKAN] ?: false,
             highPerfFpsControl = prefs[Keys.HIGH_PERF_FPS] ?: false,
+            optimizeFramePacing = prefs[Keys.OPTIMIZE_FRAME_PACING] ?: true,
+            enableAdpfHints = prefs[Keys.ENABLE_ADPF_HINTS] ?: true,
+            disablePowerSavingInGame = prefs[Keys.DISABLE_POWER_SAVING] ?: true,
+            smartBackgroundControl = prefs[Keys.SMART_BG_CONTROL] ?: true,
+            displayResolutionOpt = prefs[Keys.DISPLAY_RES_OPT] ?: false,
+            preferredDisplayModeId = prefs[Keys.PREFERRED_DISPLAY_MODE_ID] ?: 0,
+            sustainedPerformanceMode = prefs[Keys.SUSTAINED_PERF_MODE] ?: false,
+            autoPerformanceOptimization = prefs[Keys.AUTO_PERF_OPT] ?: false,
             backgroundLimitIndex = prefs[Keys.BG_LIMIT_INDEX] ?: 0,
             cacheLimitIndex = prefs[Keys.CACHE_LIMIT_INDEX] ?: 0,
             wallpaperTheme = enumOrDefault(prefs[Keys.WALLPAPER_THEME], WallpaperTheme.OBSIDIAN_CRIMSON),

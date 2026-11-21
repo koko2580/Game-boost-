@@ -84,6 +84,8 @@ internal fun RedMagicCyberOverlayContent(
     cpuDisplayUnit: String,
     brightnessFraction: Float,
     volumeFraction: Float,
+    stopwatchSeconds: Long,
+    isStopwatchRunning: Boolean,
     statusMessage: String?,
     leftTools: List<WingToolItem>,
     rightTiles: List<RightTileItem>,
@@ -220,6 +222,16 @@ internal fun RedMagicCyberOverlayContent(
 
             if (statusMessage != null) {
                 OverlayStatusPill(statusMessage, neonCyan, tileShape)
+            }
+            if (isStopwatchRunning || stopwatchSeconds > 0L) {
+                EsportsStopwatchBar(
+                    stopwatchSeconds = stopwatchSeconds,
+                    isRunning = isStopwatchRunning,
+                    accent = neonCyan,
+                    shape = tileShape,
+                    onToggle = callbacks.onToggleStopwatch,
+                    onReset = callbacks.onResetStopwatch
+                )
             }
 
             if (isWideLandscape) {

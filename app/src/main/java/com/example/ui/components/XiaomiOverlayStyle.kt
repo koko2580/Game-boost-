@@ -96,6 +96,8 @@ internal fun XiaomiHyperOverlayContent(
     cpuDisplayUnit: String,
     brightnessFraction: Float,
     volumeFraction: Float,
+    stopwatchSeconds: Long,
+    isStopwatchRunning: Boolean,
     statusMessage: String?,
     leftTools: List<WingToolItem>,
     rightTiles: List<RightTileItem>,
@@ -282,6 +284,16 @@ internal fun XiaomiHyperOverlayContent(
 
                 if (statusMessage != null) {
                     OverlayStatusPill(statusMessage, accent, RoundedCornerShape(10.dp))
+                }
+                if (isStopwatchRunning || stopwatchSeconds > 0L) {
+                    EsportsStopwatchBar(
+                        stopwatchSeconds = stopwatchSeconds,
+                        isRunning = isStopwatchRunning,
+                        accent = accent,
+                        shape = RoundedCornerShape(10.dp),
+                        onToggle = callbacks.onToggleStopwatch,
+                        onReset = callbacks.onResetStopwatch
+                    )
                 }
 
                 // Authentic Xiaomi FPS Graph & Performance Switch Card
