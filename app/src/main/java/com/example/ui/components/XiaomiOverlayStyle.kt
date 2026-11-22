@@ -2,8 +2,6 @@ package com.example.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -18,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -26,11 +25,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
@@ -41,7 +39,6 @@ import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Settings
@@ -68,7 +65,6 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -84,8 +80,8 @@ import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 
 // =====================================================================
-// REAL XIAOMI / HYPEROS GAME TURBO SIDEBAR OVERLAY
-// Left floating app rail + Charcoal GameTurbo deck + Amber FPS graph
+// REAL XIAOMI / HYPEROS GAME TURBO — HALF-SCREEN SIDEBAR DOCK
+// Slim frosted app rail + Charcoal GameTurbo deck + zero-clipping unified scroll
 // =====================================================================
 @Composable
 internal fun XiaomiHyperOverlayContent(
@@ -105,10 +101,10 @@ internal fun XiaomiHyperOverlayContent(
 ) {
     val miGold = Color(0xFFFFB703)
     val miOrange = Color(0xFFFF8A00)
-    val miBg = Color(0xEC16181E)
-    val miCardBg = Color(0xFF1F222A)
-    val miTileBg = Color(0xFF262A34)
-    val miBorder = Color(0xFF393E4B)
+    val miBg = Color(0xF0151820)
+    val miCardBg = Color(0xFF1D212B)
+    val miTileBg = Color(0xFF252A36)
+    val miBorder = Color(0xFF3A4050)
 
     val isPerfActive = settings.cpuMode != CpuMode.ENERGY_SAVING || settings.turboXMode
     val accent by animateColorAsState(
@@ -123,20 +119,6 @@ internal fun XiaomiHyperOverlayContent(
 
     var activeTab by remember { mutableIntStateOf(0) }
 
-    // Smooth left-edge drawer slide-in animation
-    val slideProgress = remember { Animatable(if (settings.lowRamOverlayMode) 1f else 0f) }
-    LaunchedEffect(settings.lowRamOverlayMode) {
-        if (settings.lowRamOverlayMode) {
-            slideProgress.snapTo(1f)
-        } else {
-            slideProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
-            )
-        }
-    }
-
-    // Live FPS waveform history buffer
     val fpsSamples = remember { mutableStateListOf(56f, 59f, 58f, 60f, 57f, 60f, 59f, 60f, 58f, 60f) }
     LaunchedEffect(telemetry.actualFps) {
         fpsSamples.add(telemetry.actualFps.toFloat().coerceIn(5f, 144f))
@@ -147,44 +129,39 @@ internal fun XiaomiHyperOverlayContent(
 
     val cpuLoadPct = ((telemetry.cpuFreqMHz.toFloat() / 3200f) * 100f).toInt().coerceIn(18, 99)
 
-    Box(
-        modifier = Modifier
-            .testTag("overlay_xiaomi_root")
-            .fillMaxSize()
-            .safeDrawingPadding()
-            .padding(horizontal = if (isWideLandscape) 12.dp else 10.dp, vertical = 8.dp),
-        contentAlignment = if (isWideLandscape) Alignment.CenterStart else Alignment.Center
-    ) {
+    EsportsHalfDockShell(
+        isWideLandscape = isWideLandscape,
+        controlPanelLayout = settings.controlPanelLayout,
+        lowRamOverlayMode = settings.lowRamOverlayMode,
+        rootTag = "overlay_xiaomi_root",
+        onDismissToHandle = callbacks.onMinimizeClick,
+        maxLandscapeWidthFraction = 0.49f,
+        maxLandscapeWidthDp = 428.dp,
+        maxPortraitHeightFraction = 0.62f
+    ) { dockEdge, _ ->
         Row(
             modifier = Modifier
-                .widthIn(max = if (isWideLandscape) 430.dp else 410.dp)
-                .fillMaxWidth()
-                .then(if (isWideLandscape) Modifier.fillMaxHeight(0.95f) else Modifier.fillMaxHeight(0.86f))
-                .graphicsLayer {
-                    val t = slideProgress.value
-                    translationX = -96f * (1f - t)
-                    alpha = t
-                }
-                .clip(RoundedCornerShape(22.dp))
+                .fillMaxSize()
+                .clip(RoundedCornerShape(20.dp))
                 .background(miBg)
-                .border(1.2.dp, miBorder, RoundedCornerShape(22.dp))
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .border(1.3.dp, Brush.verticalGradient(listOf(accent.copy(alpha = 0.65f), miBorder)), RoundedCornerShape(20.dp))
+                .padding(7.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            // Far-Left Vertical Quick App Rail (iconic Xiaomi sidebar strip)
+            // Far-Left Quick App & Utility Rail
             Column(
                 modifier = Modifier
-                    .width(44.dp)
+                    .width(38.dp)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF101217))
-                    .border(1.dp, Color(0xFF282C36), RoundedCornerShape(16.dp))
-                    .padding(vertical = 6.dp),
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF0E1117))
+                    .border(1.dp, Color(0xFF262B38), RoundedCornerShape(14.dp))
+                    .padding(vertical = 5.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     MiRailAppDot(Icons.Rounded.Public, "Browser", Color(0xFF2563EB)) {
@@ -201,7 +178,7 @@ internal fun XiaomiHyperOverlayContent(
                     }
                 }
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     MiRailAppDot(Icons.Rounded.Home, "Home", Color(0xFF334155), tag = "overlay_home") {
@@ -210,20 +187,20 @@ internal fun XiaomiHyperOverlayContent(
                     MiRailAppDot(Icons.Rounded.Settings, "Settings", Color(0xFF334155), tag = "overlay_settings") {
                         callbacks.onSettingsClick()
                     }
-                    MiRailAppDot(Icons.Rounded.PowerSettingsNew, "Close", Color(0xFF991B1B), tag = "overlay_power") {
+                    MiRailAppDot(Icons.Rounded.PowerSettingsNew, "Stop Overlay", Color(0xFF991B1B), tag = "overlay_power") {
                         callbacks.onPowerExitClick()
                     }
                 }
             }
 
-            // Main Xiaomi Game Turbo Body
+            // Main HyperOS GameTurbo Body
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(7.dp)
+                verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                // Top Header: GAMETURBO + Minimize Handle
+                // Header: GT + GAMETURBO + Clear HIDE Collapse Chip
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -251,7 +228,7 @@ internal fun XiaomiHyperOverlayContent(
                         }
                         Text(
                             text = "GAMETURBO",
-                            style = MaterialTheme.typography.titleMedium.copy(
+                            style = MaterialTheme.typography.titleSmall.copy(
                                 fontFamily = RajdhaniFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 1.sp
@@ -261,50 +238,39 @@ internal fun XiaomiHyperOverlayContent(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .testTag("overlay_g_handle")
-                            .clip(CircleShape)
-                            .background(miTileBg)
-                            .border(1.dp, accent.copy(alpha = 0.55f), CircleShape)
-                            .clickable { callbacks.onMinimizeClick() }
-                            .padding(horizontal = 9.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Turbo X",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = TextPrimary
-                        )
-                        Icon(Icons.Rounded.KeyboardArrowRight, contentDescription = "Minimize", tint = accent, modifier = Modifier.size(15.dp))
-                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    EsportsCollapseChip(
+                        label = "HIDE",
+                        dockEdge = dockEdge,
+                        accent = accent,
+                        shape = CircleShape,
+                        onClick = callbacks.onMinimizeClick
+                    )
                 }
 
                 if (statusMessage != null) {
-                    OverlayStatusPill(statusMessage, accent, RoundedCornerShape(10.dp))
+                    OverlayStatusPill(statusMessage, accent, RoundedCornerShape(9.dp))
                 }
                 if (isStopwatchRunning || stopwatchSeconds > 0L) {
                     EsportsStopwatchBar(
                         stopwatchSeconds = stopwatchSeconds,
                         isRunning = isStopwatchRunning,
                         accent = accent,
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(9.dp),
                         onToggle = callbacks.onToggleStopwatch,
                         onReset = callbacks.onResetStopwatch
                     )
                 }
 
-                // Authentic Xiaomi FPS Graph & Performance Switch Card
+                // Compact Telemetry & FPS Waveform Card
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(miCardBg)
-                        .border(1.dp, miBorder.copy(alpha = 0.7f), RoundedCornerShape(14.dp))
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                        .border(1.dp, miBorder.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 9.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -313,7 +279,7 @@ internal fun XiaomiHyperOverlayContent(
                     ) {
                         Text(
                             text = "CPU $cpuLoadPct% • $cpuDisplayValue$cpuDisplayUnit • ${telemetry.batteryTempCelsius}°C",
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                             color = TextSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -321,7 +287,6 @@ internal fun XiaomiHyperOverlayContent(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        // Iconic Performance Toggle Pill (cycles CpuMode cleanly!)
                         Row(
                             modifier = Modifier
                                 .testTag("overlay_cpu_mode_pill")
@@ -330,9 +295,9 @@ internal fun XiaomiHyperOverlayContent(
                                     val next = CpuMode.entries[(settings.cpuMode.ordinal + 1) % CpuMode.entries.size]
                                     callbacks.onSelectCpuMode(next)
                                 }
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 1.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Text(
                                 text = when (settings.cpuMode) {
@@ -340,24 +305,24 @@ internal fun XiaomiHyperOverlayContent(
                                     CpuMode.BALANCED -> "Performance"
                                     CpuMode.ACCELERATION -> "Wild Boost"
                                 },
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 10.sp),
                                 color = accent
                             )
                             val thumbOffset by animateDpAsState(
-                                targetValue = if (isPerfActive) 14.dp else 2.dp,
+                                targetValue = if (isPerfActive) 13.dp else 2.dp,
                                 animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMedium),
                                 label = "mi_perf_switch"
                             )
                             Box(
                                 modifier = Modifier
-                                    .size(width = 30.dp, height = 16.dp)
+                                    .size(width = 28.dp, height = 15.dp)
                                     .clip(CircleShape)
                                     .background(if (isPerfActive) accent else Color(0xFF3A3F4B))
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .offset(x = thumbOffset, y = 2.dp)
-                                        .size(12.dp)
+                                        .size(11.dp)
                                         .clip(CircleShape)
                                         .background(Color.White)
                                 )
@@ -365,11 +330,10 @@ internal fun XiaomiHyperOverlayContent(
                         }
                     }
 
-                    // Live Golden FPS Line Graph
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(if (isWideLandscape) 42.dp else 52.dp)
+                            .height(if (isWideLandscape) 30.dp else 38.dp)
                     ) {
                         XiaomiFpsWaveformCanvas(
                             samples = fpsSamples,
@@ -381,33 +345,32 @@ internal fun XiaomiHyperOverlayContent(
                             verticalArrangement = Arrangement.SpaceBetween,
                             horizontalAlignment = Alignment.End
                         ) {
-                            Text("120", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp), color = TextMuted)
-                            Text("60", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp), color = TextMuted)
-                            Text("0", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp), color = TextMuted)
+                            Text("120", style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp), color = TextMuted)
+                            Text("60", style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp), color = TextMuted)
+                            Text("0", style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp), color = TextMuted)
                         }
                     }
 
-                    // Bottom FPS + Gold-Bordered Boost CTA Bar
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
                                 text = "${telemetry.actualFps}",
-                                style = MaterialTheme.typography.titleLarge.copy(
+                                style = MaterialTheme.typography.titleMedium.copy(
                                     fontFamily = RajdhaniFontFamily,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 22.sp
+                                    fontSize = 19.sp
                                 ),
                                 color = accent
                             )
                             Text(
                                 text = "FPS",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
                                 color = TextSecondary,
-                                modifier = Modifier.padding(bottom = 3.dp)
+                                modifier = Modifier.padding(bottom = 2.dp)
                             )
                         }
 
@@ -415,18 +378,18 @@ internal fun XiaomiHyperOverlayContent(
                             modifier = Modifier
                                 .testTag("overlay_ram_boost_pill")
                                 .weight(1f)
-                                .height(30.dp)
+                                .height(27.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(accent.copy(alpha = 0.14f))
+                                .background(accent.copy(alpha = 0.16f))
                                 .border(1.2.dp, accent, RoundedCornerShape(8.dp))
                                 .clickable { callbacks.onBoostRam() },
                             contentAlignment = Alignment.Center
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Icon(Icons.Rounded.Bolt, contentDescription = null, tint = accent, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Rounded.Bolt, contentDescription = null, tint = accent, modifier = Modifier.size(13.dp))
                                 Text(
                                     text = "Boost • RAM ${telemetry.ramUsedPercent}%",
-                                    style = MaterialTheme.typography.labelMedium.copy(
+                                    style = MaterialTheme.typography.labelSmall.copy(
                                         fontFamily = RajdhaniFontFamily,
                                         fontWeight = FontWeight.Bold
                                     ),
@@ -438,29 +401,32 @@ internal fun XiaomiHyperOverlayContent(
                     }
                 }
 
-                // Clean Switch Tabs: Tools | System & Sliders
+                // Tabs: Game Tools | Quick & Sliders
                 StyleTabStrip(
                     tabs = listOf("Game Tools", "Quick Controls"),
                     selectedIndex = activeTab,
                     accent = accent,
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(9.dp),
                     onSelect = { activeTab = it },
                     selectedTextColor = Color(0xFF151208),
                     containerColor = miCardBg
                 )
 
+                // Zero-clipping scrollable grids (sliders live inside the grid so nothing slices rows)
                 AnimatedContent(
                     targetState = activeTab,
-                    transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(150)) },
+                    transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) },
                     label = "xiaomi_tab_content",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).fillMaxWidth()
                 ) { tab ->
+                    val cols = if (isWideLandscape) 4 else 3
                     if (tab == 0) {
                         LazyVerticalGrid(
-                            columns = GridCells.Fixed(4),
+                            columns = GridCells.Fixed(cols),
                             modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            contentPadding = PaddingValues(bottom = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             items(leftTools, key = { it.id }) { tool ->
                                 EsportsToolCard(
@@ -470,46 +436,45 @@ internal fun XiaomiHyperOverlayContent(
                                     active = tool.isActive,
                                     activeAccent = accent,
                                     inactiveContainer = miTileBg,
-                                    shape = RoundedCornerShape(11.dp),
-                                    cardHeight = if (isWideLandscape) 46.dp else 54.dp,
+                                    shape = RoundedCornerShape(10.dp),
+                                    cardHeight = if (isWideLandscape) 41.dp else 48.dp,
                                     onClick = tool.onClick
                                 )
                             }
                         }
                     } else {
-                        Column(
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(cols),
                             modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            contentPadding = PaddingValues(bottom = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
-                            LazyVerticalGrid(
-                                columns = GridCells.Fixed(4),
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                items(rightTiles, key = { it.id }) { tile ->
-                                    EsportsToolCard(
-                                        label = tile.label,
-                                        icon = tile.icon,
-                                        badgeText = tile.customBadgeText,
-                                        active = tile.isActive,
-                                        activeAccent = accent,
-                                        inactiveContainer = miTileBg,
-                                        shape = RoundedCornerShape(11.dp),
-                                        cardHeight = if (isWideLandscape) 44.dp else 50.dp,
-                                        onClick = tile.onClick
-                                    )
+                            item(span = { GridItemSpan(cols) }, key = "mi_sliders_header") {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(miCardBg)
+                                        .border(1.dp, miBorder.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                                ) {
+                                    EsportsHorizontalSliderRow(Icons.Rounded.WbSunny, "Brightness", brightnessFraction, accent, callbacks.onBrightnessChange)
+                                    EsportsHorizontalSliderRow(Icons.AutoMirrored.Rounded.VolumeUp, "Volume", volumeFraction, Color(0xFF38BDF8), callbacks.onVolumeChange)
                                 }
                             }
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(11.dp))
-                                    .background(miCardBg)
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                EsportsHorizontalSliderRow(Icons.Rounded.WbSunny, "Brightness", brightnessFraction, accent, callbacks.onBrightnessChange)
-                                EsportsHorizontalSliderRow(Icons.AutoMirrored.Rounded.VolumeUp, "Volume", volumeFraction, Color(0xFF38BDF8), callbacks.onVolumeChange)
+                            items(rightTiles, key = { it.id }) { tile ->
+                                EsportsToolCard(
+                                    label = tile.label,
+                                    icon = tile.icon,
+                                    badgeText = tile.customBadgeText,
+                                    active = tile.isActive,
+                                    activeAccent = accent,
+                                    inactiveContainer = miTileBg,
+                                    shape = RoundedCornerShape(10.dp),
+                                    cardHeight = if (isWideLandscape) 41.dp else 46.dp,
+                                    onClick = tile.onClick
+                                )
                             }
                         }
                     }
@@ -530,14 +495,14 @@ private fun MiRailAppDot(
     Box(
         modifier = Modifier
             .then(if (tag != null) Modifier.testTag(tag) else Modifier)
-            .size(30.dp)
+            .size(27.dp)
             .clip(CircleShape)
             .background(tintBg.copy(alpha = 0.85f))
             .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size(16.dp))
+        Icon(icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size(14.dp))
     }
 }
 
@@ -591,7 +556,7 @@ private fun XiaomiFpsWaveformCanvas(
             style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
         val lastY = h - ((samples.last() / maxFps).coerceIn(0.05f, 0.98f) * h)
-        drawCircle(color = Color.White, radius = 3.2.dp.toPx(), center = Offset(w, lastY))
-        drawCircle(color = lineColor, radius = 5.5.dp.toPx(), center = Offset(w, lastY), style = Stroke(1.4.dp.toPx()))
+        drawCircle(color = Color.White, radius = 3.dp.toPx(), center = Offset(w, lastY))
+        drawCircle(color = lineColor, radius = 5.dp.toPx(), center = Offset(w, lastY), style = Stroke(1.3.dp.toPx()))
     }
 }

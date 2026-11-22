@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -28,15 +29,19 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -45,9 +50,12 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PowerSettingsNew
@@ -58,15 +66,15 @@ import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
-import java.util.Locale
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,6 +88,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
@@ -89,6 +98,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.ControlPanelLayout
 import com.example.data.CpuMode
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberSlate
@@ -96,6 +106,7 @@ import com.example.ui.theme.RajdhaniFontFamily
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -117,18 +128,206 @@ internal data class RightTileItem(
     val onClick: () -> Unit
 )
 
+internal enum class DockEdge {
+    START, END, BOTTOM
+}
+
+internal fun resolveDockEdge(
+    isWideLandscape: Boolean,
+    controlPanelLayout: ControlPanelLayout
+): DockEdge = when {
+    !isWideLandscape -> DockEdge.BOTTOM
+    controlPanelLayout == ControlPanelLayout.RIGHT_EDGE_MENU -> DockEdge.END
+    else -> DockEdge.START
+}
+
+/**
+ * Shared half-screen floating dock wrapper for all Turbo X overlay styles.
+ * - Leaves half+ of the game screen completely unobstructed for FPS visibility
+ * - Tap outside the docked HUD (on [overlay_backdrop_scrim]) collapses back to the handle
+ * - Swipe toward the docked edge also collapses quickly
+ */
+@Composable
+internal fun EsportsHalfDockShell(
+    isWideLandscape: Boolean,
+    controlPanelLayout: ControlPanelLayout,
+    lowRamOverlayMode: Boolean,
+    rootTag: String,
+    onDismissToHandle: () -> Unit,
+    modifier: Modifier = Modifier,
+    maxLandscapeWidthFraction: Float = 0.49f,
+    maxLandscapeWidthDp: Dp = 436.dp,
+    maxPortraitHeightFraction: Float = 0.62f,
+    panelContent: @Composable BoxScope.(dockEdge: DockEdge, dockWidthFraction: Dp) -> Unit
+) {
+    val dockEdge = resolveDockEdge(isWideLandscape, controlPanelLayout)
+    val entrance = remember(rootTag, lowRamOverlayMode) {
+        Animatable(if (lowRamOverlayMode) 1f else 0f)
+    }
+    LaunchedEffect(rootTag, lowRamOverlayMode) {
+        if (lowRamOverlayMode) {
+            entrance.snapTo(1f)
+        } else {
+            entrance.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
+            )
+        }
+    }
+
+    val scrimInteraction = remember { MutableInteractionSource() }
+    val panelClickShield = remember { MutableInteractionSource() }
+    var dragAccum by remember { mutableFloatStateOf(0f) }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .testTag(rootTag)
+            .fillMaxSize()
+    ) {
+        // Lightweight tap-outside scrim that never blinds the FPS battlefield
+        Box(
+            modifier = Modifier
+                .testTag("overlay_backdrop_scrim")
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.24f))
+                .clickable(
+                    interactionSource = scrimInteraction,
+                    indication = null,
+                    onClick = onDismissToHandle
+                )
+        )
+
+        val alignment = when (dockEdge) {
+            DockEdge.START -> Alignment.CenterStart
+            DockEdge.END -> Alignment.CenterEnd
+            DockEdge.BOTTOM -> Alignment.BottomCenter
+        }
+
+        val targetWidth = if (isWideLandscape) {
+            (maxWidth * maxLandscapeWidthFraction).coerceIn(288.dp, maxLandscapeWidthDp)
+        } else {
+            (maxWidth - 16.dp).coerceAtMost(436.dp)
+        }
+
+        val targetHeight = if (isWideLandscape) {
+            (maxHeight - 14.dp).coerceIn(260.dp, 388.dp)
+        } else {
+            (maxHeight * maxPortraitHeightFraction).coerceIn(320.dp, 490.dp)
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .padding(
+                    horizontal = if (isWideLandscape) 10.dp else 8.dp,
+                    vertical = if (isWideLandscape) 6.dp else 10.dp
+                ),
+            contentAlignment = alignment
+        ) {
+            Box(
+                modifier = Modifier
+                    .testTag("overlay_dock_panel")
+                    .width(targetWidth)
+                    .heightIn(max = targetHeight)
+                    .fillMaxHeight(if (isWideLandscape) 0.96f else 1f)
+                    .graphicsLayer {
+                        val t = entrance.value.coerceIn(0f, 1f)
+                        alpha = 0.35f + (0.65f * t)
+                        when (dockEdge) {
+                            DockEdge.START -> translationX = -110f * (1f - t)
+                            DockEdge.END -> translationX = 110f * (1f - t)
+                            DockEdge.BOTTOM -> translationY = 110f * (1f - t)
+                        }
+                    }
+                    .pointerInput(dockEdge) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = { dragAccum = 0f },
+                            onDragCancel = { dragAccum = 0f }
+                        ) { change, dragAmount ->
+                            dragAccum += dragAmount
+                            val dismissSwiped = when (dockEdge) {
+                                DockEdge.START -> dragAccum < -95f
+                                DockEdge.END -> dragAccum > 95f
+                                DockEdge.BOTTOM -> false
+                            }
+                            if (dismissSwiped) {
+                                change.consume()
+                                dragAccum = 0f
+                                onDismissToHandle()
+                            }
+                        }
+                    }
+                    .clickable(
+                        interactionSource = panelClickShield,
+                        indication = null,
+                        onClick = {}
+                    )
+            ) {
+                panelContent(dockEdge, targetWidth)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun EsportsCollapseChip(
+    label: String,
+    dockEdge: DockEdge,
+    accent: Color,
+    shape: Shape,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val arrowIcon = when (dockEdge) {
+        DockEdge.START -> Icons.AutoMirrored.Rounded.KeyboardArrowLeft
+        DockEdge.END -> Icons.AutoMirrored.Rounded.KeyboardArrowRight
+        DockEdge.BOTTOM -> Icons.Rounded.KeyboardArrowDown
+    }
+    Row(
+        modifier = modifier
+            .testTag("overlay_g_handle")
+            .height(28.dp)
+            .clip(shape)
+            .background(accent.copy(alpha = 0.18f))
+            .border(1.dp, accent.copy(alpha = 0.85f), shape)
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Icon(
+            imageVector = arrowIcon,
+            contentDescription = "Hide game panel",
+            tint = accent,
+            modifier = Modifier.size(16.dp)
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = RajdhaniFontFamily,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.6.sp
+            ),
+            color = Color.White,
+            maxLines = 1
+        )
+    }
+}
+
 @Composable
 internal fun OverlayActionIconRow(
     accentColor: Color,
     containerColor: Color,
     shape: Shape = CircleShape,
-    callbacks: OverlayCallbacks
+    callbacks: OverlayCallbacks,
+    iconSizeDp: Dp = 28.dp
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        EsportsActionIconBtn(Icons.Rounded.Home, "Home", accentColor, containerColor, shape, "overlay_home", callbacks.onHomeClick)
-        EsportsActionIconBtn(Icons.Rounded.Settings, "Settings", accentColor, containerColor, shape, "overlay_settings", callbacks.onSettingsClick)
-        EsportsActionIconBtn(Icons.Rounded.Gamepad, "Games", accentColor, containerColor, shape, "overlay_games", callbacks.onGamesClick)
-        EsportsActionIconBtn(Icons.Rounded.PowerSettingsNew, "Close Overlay", Color(0xFFFF3D57), containerColor, shape, "overlay_power", callbacks.onPowerExitClick)
+    Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+        EsportsActionIconBtn(Icons.Rounded.Home, "Home", accentColor, containerColor, shape, "overlay_home", iconSizeDp, callbacks.onHomeClick)
+        EsportsActionIconBtn(Icons.Rounded.Settings, "Settings", accentColor, containerColor, shape, "overlay_settings", iconSizeDp, callbacks.onSettingsClick)
+        EsportsActionIconBtn(Icons.Rounded.Gamepad, "Games", accentColor, containerColor, shape, "overlay_games", iconSizeDp, callbacks.onGamesClick)
+        EsportsActionIconBtn(Icons.Rounded.PowerSettingsNew, "Stop Overlay Service", Color(0xFFFF3D57), containerColor, shape, "overlay_power", iconSizeDp, callbacks.onPowerExitClick)
     }
 }
 
@@ -140,6 +339,7 @@ internal fun EsportsActionIconBtn(
     containerColor: Color,
     shape: Shape,
     tag: String,
+    sizeDp: Dp = 28.dp,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -151,17 +351,16 @@ internal fun EsportsActionIconBtn(
     )
     Box(
         modifier = Modifier
-            .minimumInteractiveComponentSize()
             .scale(scale)
             .testTag(tag)
-            .size(34.dp)
+            .size(sizeDp)
             .clip(shape)
             .background(containerColor)
             .border(1.dp, tint.copy(alpha = 0.45f), shape)
             .clickable(interactionSource = interactionSource, indication = null) { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = description, tint = TextPrimary, modifier = Modifier.size(17.dp))
+        Icon(icon, contentDescription = description, tint = TextPrimary, modifier = Modifier.size(15.dp))
     }
 }
 
@@ -176,7 +375,7 @@ internal fun EsportsToolCard(
     shape: Shape,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    cardHeight: Dp = 50.dp
+    cardHeight: Dp = 44.dp
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -196,7 +395,7 @@ internal fun EsportsToolCard(
         label = "tool_border"
     )
 
-    Column(
+    Box(
         modifier = modifier
             .scale(scale)
             .height(cardHeight)
@@ -204,88 +403,57 @@ internal fun EsportsToolCard(
             .background(bg)
             .border(if (active) 1.3.dp else 1.dp, border, shape)
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
-            .padding(horizontal = 5.dp, vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
     ) {
-        if (badgeText != null) {
-            Text(
-                text = badgeText,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontFamily = RajdhaniFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                ),
-                color = if (active) activeAccent else TextPrimary,
-                maxLines = 1
-            )
-        } else if (icon != null) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (active) activeAccent else TextPrimary,
-                modifier = Modifier.size(19.dp)
+        // Active neon LED status pip in top-right corner for immediate gaming feedback
+        if (active) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 4.dp, end = 5.dp)
+                    .size(5.dp)
+                    .clip(CircleShape)
+                    .background(activeAccent)
             )
         }
-        Spacer(modifier = Modifier.height(3.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-            color = if (active) TextPrimary else TextSecondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-internal fun EsportsMetricMeter(
-    label: String,
-    valueText: String,
-    progress: Float,
-    accentColor: Color,
-    trackColor: Color = CyberSlate,
-    modifier: Modifier = Modifier
-) {
-    val animatedProgress by animateFloatAsState(
-        targetValue = progress.coerceIn(0.08f, 1f),
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
-        label = "esports_meter"
-    )
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp, vertical = 3.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
+            if (badgeText != null) {
+                Text(
+                    text = badgeText,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    ),
+                    color = if (active) activeAccent else TextPrimary,
+                    maxLines = 1
+                )
+            } else if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = if (active) activeAccent else TextPrimary,
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = RajdhaniFontFamily,
-                    letterSpacing = 0.9.sp,
-                    fontSize = 10.sp
+                    fontSize = 9.5.sp,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal
                 ),
-                color = TextMuted
-            )
-            Text(
-                text = valueText,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontFamily = RajdhaniFontFamily,
-                    fontWeight = FontWeight.Bold
-                ),
-                color = TextPrimary
+                color = if (active) TextPrimary else TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
             )
         }
-        LinearProgressIndicator(
-            progress = { animatedProgress },
-            color = accentColor,
-            trackColor = trackColor,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
-        )
     }
 }
 
@@ -301,7 +469,7 @@ internal fun EsportsHorizontalSliderRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(30.dp),
+            .height(28.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -326,7 +494,7 @@ internal fun EsportsHorizontalSliderRow(
             contentAlignment = Alignment.CenterStart
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val trackH = 8.dp.toPx()
+                val trackH = 7.dp.toPx()
                 val topY = (size.height - trackH) / 2f
                 val corner = CornerRadius(trackH / 2f)
                 drawRoundRect(
@@ -337,20 +505,20 @@ internal fun EsportsHorizontalSliderRow(
                 )
                 val fillW = (size.width * clamped).coerceAtLeast(trackH)
                 drawRoundRect(
-                    brush = Brush.horizontalGradient(listOf(accentColor.copy(alpha = 0.78f), accentColor)),
+                    brush = Brush.horizontalGradient(listOf(accentColor.copy(alpha = 0.72f), accentColor)),
                     topLeft = Offset(0f, topY),
                     size = Size(fillW, trackH),
                     cornerRadius = corner
                 )
-                val thumbX = fillW.coerceIn(7.dp.toPx(), (size.width - 7.dp.toPx()).coerceAtLeast(7.dp.toPx()))
+                val thumbX = fillW.coerceIn(6.5.dp.toPx(), (size.width - 6.5.dp.toPx()).coerceAtLeast(6.5.dp.toPx()))
                 drawCircle(
                     color = Color.White,
-                    radius = 6.5.dp.toPx(),
+                    radius = 6.dp.toPx(),
                     center = Offset(thumbX, size.height / 2f)
                 )
                 drawCircle(
                     color = accentColor,
-                    radius = 3.dp.toPx(),
+                    radius = 2.8.dp.toPx(),
                     center = Offset(thumbX, size.height / 2f)
                 )
             }
@@ -378,7 +546,7 @@ internal fun EsportsVerticalNeonSlider(
     Column(
         modifier = modifier.fillMaxHeight(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         Text(
             text = "${(clamped * 100).toInt()}%",
@@ -389,7 +557,7 @@ internal fun EsportsVerticalNeonSlider(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .width(38.dp)
+                .width(36.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFF101522))
                 .border(1.dp, accentColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
@@ -410,7 +578,7 @@ internal fun EsportsVerticalNeonSlider(
         ) {
             Canvas(modifier = Modifier.fillMaxSize().padding(4.dp)) {
                 val segments = 8
-                val gap = 3.dp.toPx()
+                val gap = 2.5.dp.toPx()
                 val segH = (size.height - gap * (segments - 1)) / segments
                 val litCount = (clamped * segments).toInt().coerceIn(1, segments)
                 for (i in 0 until segments) {
@@ -421,12 +589,12 @@ internal fun EsportsVerticalNeonSlider(
                         color = if (isLit) accentColor else Color(0xFF1D2436),
                         topLeft = Offset(0f, top),
                         size = Size(size.width, segH),
-                        cornerRadius = CornerRadius(2.5.dp.toPx())
+                        cornerRadius = CornerRadius(2.dp.toPx())
                     )
                 }
             }
         }
-        Icon(icon, contentDescription = label, tint = accentColor, modifier = Modifier.size(16.dp))
+        Icon(icon, contentDescription = label, tint = accentColor, modifier = Modifier.size(15.dp))
     }
 }
 
@@ -437,7 +605,7 @@ internal fun EsportsQuickAppBar(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         QuickShortcutChip("Browser", Icons.Rounded.Public, Color(0xFF1A73E8), shape, Modifier.weight(1f)) {
@@ -463,20 +631,20 @@ private fun QuickShortcutChip(
 ) {
     Row(
         modifier = modifier
-            .height(38.dp)
+            .height(34.dp)
             .clip(shape)
             .background(color.copy(alpha = 0.16f))
             .border(1.dp, color.copy(alpha = 0.55f), shape)
             .clickable { onClick() }
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
-        Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.width(5.dp))
+        Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(15.dp))
+        Spacer(modifier = Modifier.width(4.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
             color = TextPrimary,
             maxLines = 1
         )
@@ -489,7 +657,7 @@ internal fun SpinningCoolingFanGlyph(
     animate: Boolean,
     primaryColor: Color,
     secondaryColor: Color,
-    sizeDp: Dp = 36.dp
+    sizeDp: Dp = 28.dp
 ) {
     val cycleMs = when (cpuMode) {
         CpuMode.ENERGY_SAVING -> 2800
@@ -541,39 +709,25 @@ internal fun SpinningCoolingFanGlyph(
             color = secondaryColor.copy(alpha = 0.85f),
             radius = r,
             center = Offset(cx, cy),
-            style = Stroke(width = 1.6.dp.toPx())
+            style = Stroke(width = 1.5.dp.toPx())
         )
         rotate(degrees = angle, pivot = Offset(cx, cy)) {
             val bladeCount = 6
             for (i in 0 until bladeCount) {
                 val deg = i * (360f / bladeCount)
-                val rad1 = (deg) * (PI / 180.0)
+                val rad1 = deg * (PI / 180.0)
                 val rad2 = (deg + 28f) * (PI / 180.0)
                 val blade = Path().apply {
                     moveTo(cx, cy)
-                    lineTo(
-                        cx + (r * 0.85f * cos(rad1)).toFloat(),
-                        cy + (r * 0.85f * sin(rad1)).toFloat()
-                    )
-                    lineTo(
-                        cx + (r * 0.72f * cos(rad2)).toFloat(),
-                        cy + (r * 0.72f * sin(rad2)).toFloat()
-                    )
+                    lineTo(cx + (r * 0.85f * cos(rad1)).toFloat(), cy + (r * 0.85f * sin(rad1)).toFloat())
+                    lineTo(cx + (r * 0.72f * cos(rad2)).toFloat(), cy + (r * 0.72f * sin(rad2)).toFloat())
                     close()
                 }
                 drawPath(blade, color = if (i % 2 == 0) primaryColor else secondaryColor.copy(alpha = 0.9f))
             }
         }
-        drawCircle(
-            color = Color(0xFF0A0D16),
-            radius = r * 0.28f,
-            center = Offset(cx, cy)
-        )
-        drawCircle(
-            color = Color.White,
-            radius = r * 0.13f,
-            center = Offset(cx, cy)
-        )
+        drawCircle(color = Color(0xFF0A0D16), radius = r * 0.28f, center = Offset(cx, cy))
+        drawCircle(color = Color.White, radius = r * 0.13f, center = Offset(cx, cy))
     }
 }
 
@@ -592,8 +746,8 @@ internal fun StyleTabStrip(
             .fillMaxWidth()
             .clip(shape)
             .background(containerColor)
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+            .padding(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         tabs.forEachIndexed { idx, label ->
             val selected = selectedIndex == idx
@@ -608,14 +762,15 @@ internal fun StyleTabStrip(
                     .clip(shape)
                     .background(bg)
                     .clickable { onSelect(idx) }
-                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                    .padding(vertical = 5.dp, horizontal = 3.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = label,
-                    style = MaterialTheme.typography.labelMedium.copy(
+                    style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = RajdhaniFontFamily,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp
                     ),
                     color = if (selected) selectedTextColor else TextSecondary,
                     maxLines = 1,
@@ -658,8 +813,9 @@ internal fun AnimatedStyleGrid(
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columns),
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                contentPadding = PaddingValues(bottom = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 items(leftTools, key = { it.id }) { tool ->
                     EsportsToolCard(
@@ -679,8 +835,9 @@ internal fun AnimatedStyleGrid(
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columns),
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                contentPadding = PaddingValues(bottom = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 items(rightTiles, key = { it.id }) { tile ->
                     EsportsToolCard(
@@ -713,17 +870,17 @@ internal fun MiniTelemetryTag(
             .clip(shape)
             .background(accent.copy(alpha = 0.14f))
             .border(1.dp, accent.copy(alpha = 0.45f), shape)
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = 6.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
         if (icon != null) {
-            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(13.dp))
-            Spacer(modifier = Modifier.width(4.dp))
+            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(12.dp))
+            Spacer(modifier = Modifier.width(3.dp))
         }
         Text(
             text = text,
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = RajdhaniFontFamily, fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = RajdhaniFontFamily, fontWeight = FontWeight.Bold, fontSize = 10.sp),
             color = TextPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -746,9 +903,9 @@ internal fun OverlayStatusPill(
     ) {
         Text(
             text = message,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
             color = accent,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -775,15 +932,15 @@ internal fun EsportsStopwatchBar(
             .clip(shape)
             .background(Color(0xFF131826))
             .border(1.dp, accent.copy(alpha = 0.7f), shape)
-            .padding(horizontal = 10.dp, vertical = 2.dp),
+            .padding(horizontal = 8.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
-            Icon(Icons.Rounded.Timer, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
+            Icon(Icons.Rounded.Timer, contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
             Text(
                 text = formatted,
                 style = MaterialTheme.typography.titleSmall.copy(
@@ -793,8 +950,8 @@ internal fun EsportsStopwatchBar(
                 color = TextPrimary
             )
             Text(
-                text = if (isRunning) "RUNNING" else "PAUSED",
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                text = if (isRunning) "RUN" else "PAUSE",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
                 color = accent
             )
         }
@@ -803,26 +960,26 @@ internal fun EsportsStopwatchBar(
                 onClick = onToggle,
                 modifier = Modifier
                     .testTag("overlay_stopwatch_toggle")
-                    .size(34.dp)
+                    .size(30.dp)
             ) {
                 Icon(
                     imageVector = if (isRunning) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = if (isRunning) "Pause stopwatch" else "Resume stopwatch",
                     tint = Color.White,
-                    modifier = Modifier.size(17.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
             IconButton(
                 onClick = onReset,
                 modifier = Modifier
                     .testTag("overlay_stopwatch_reset")
-                    .size(34.dp)
+                    .size(30.dp)
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Refresh,
                     contentDescription = "Reset stopwatch",
                     tint = TextSecondary,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(15.dp)
                 )
             }
         }

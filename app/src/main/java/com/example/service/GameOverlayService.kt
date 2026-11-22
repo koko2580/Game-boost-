@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.IBinder
 import android.view.Choreographer
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -102,6 +103,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class GameOverlayService : Service() {
@@ -356,8 +358,17 @@ class GameOverlayService : Service() {
         hudPassThroughParams = hudParams
         windowManager.addView(hudView, hudParams)
 
-        // 2. Interactive Handle / Expandable Dual-Wing Control Panel
+        // 2. Interactive Handle / Expandable Half-Screen Control Panel
         val ctrlView = ComposeView(this).apply {
+            isFocusableInTouchMode = true
+            setOnKeyListener { _, keyCode, event ->
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP && isExpanded) {
+                    toggleExpanded(false, latestSettings.controlPanelLayout)
+                    true
+                } else {
+                    false
+                }
+            }
             setViewTreeLifecycleOwner(owner)
             setViewTreeViewModelStoreOwner(owner)
             setViewTreeSavedStateRegistryOwner(owner)
@@ -424,6 +435,9 @@ class GameOverlayService : Service() {
         hardware.performanceEngine.applyToOverlayWindowParams(params, latestSettings, supportedRates, view)
         controlLayoutParams = params
         runCatching { windowManager.updateViewLayout(view, params) }
+        if (expand) {
+            view.requestFocus()
+        }
     }
 
     private fun overlayWindowType(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -896,27 +910,67 @@ private fun FloatingTriggerHandle(
     when (layout) {
         ControlPanelLayout.LEFT_EDGE_SWIPE,
         ControlPanelLayout.LEFT_EDGE_MINIMAL -> {
+            // Subtle non-intrusive visual capsule with generous 20.dp touch area; tap OR swipe inward to open
             Box(
-                modifier = dragModifier
-                    .padding(start = 2.dp)
-                    .width(10.dp)
-                    .height(96.dp)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(Color.White.copy(alpha = 0.88f))
-                    .border(1.5.dp, CrimsonTurbo, RoundedCornerShape(5.dp))
-                    .clickable { onExpand() }
-            )
+                modifier = Modifier
+                    .width(20.dp)
+                    .height(92.dp)
+                    .pointerInput(Unit) {
+                        var swipeX = 0f
+                        detectDragGestures(
+                            onDragEnd = { swipeX = 0f },
+                            onDragCancel = { swipeX = 0f }
+                        ) { change, dragAmount ->
+                            change.consume()
+                            swipeX += dragAmount.x
+                            if (swipeX > 26f && abs(dragAmount.x) >= abs(dragAmount.y) * 0.6f) {
+                                swipeX = 0f
+                                onExpand()
+                            } else {
+                                onDrag(0f, dragAmount.y)
+                            }
+                        }
+                    }
+                    .clickable { onExpand() },
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(start = 2.dp)
+                        .width(6.dp)
+                        .height(74.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color.White.copy(alpha = 0.72f))
+                        .border(1.2.dp, CrimsonTurbo.copy(alpha = 0.9f), RoundedCornerShape(4.dp))
+                )
+            }
         }
         ControlPanelLayout.RIGHT_EDGE_MENU -> {
             if (isCollapsed) {
                 Box(
-                    modifier = dragModifier
+                    modifier = Modifier
                         .padding(end = 2.dp)
-                        .size(28.dp, 54.dp)
-                        .clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
-                        .background(ObsidianVoid.copy(alpha = 0.92f))
-                        .border(1.dp, CrimsonTurbo, RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
-                        .clickable { onToggleCollapse() },
+                        .size(28.dp, 50.dp)
+                        .clip(RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp))
+                        .background(ObsidianVoid.copy(alpha = 0.78f))
+                        .border(1.dp, CrimsonTurbo.copy(alpha = 0.85f), RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp))
+                        .pointerInput(Unit) {
+                            var swipeX = 0f
+                            detectDragGestures(
+                                onDragEnd = { swipeX = 0f },
+                                onDragCancel = { swipeX = 0f }
+                            ) { change, dragAmount ->
+                                change.consume()
+                                swipeX += dragAmount.x
+                                if (swipeX < -26f) {
+                                    swipeX = 0f
+                                    onExpand()
+                                } else {
+                                    onDrag(0f, dragAmount.y)
+                                }
+                            }
+                        }
+                        .clickable { onExpand() },
                     contentAlignment = Alignment.Center
                 ) {
                     Text("G", color = CrimsonTurbo, fontWeight = FontWeight.Bold)
@@ -925,18 +979,18 @@ private fun FloatingTriggerHandle(
                 Column(
                     modifier = Modifier
                         .padding(end = 2.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(ObsidianVoid.copy(alpha = 0.94f))
-                        .border(1.dp, CrimsonTurbo, RoundedCornerShape(8.dp))
-                        .padding(5.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(ObsidianVoid.copy(alpha = 0.86f))
+                        .border(1.dp, CrimsonTurbo.copy(alpha = 0.85f), RoundedCornerShape(10.dp))
+                        .padding(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(Icons.Rounded.ExpandMore, "Hide", tint = Color.White, modifier = Modifier.size(20.dp).clickable { onToggleCollapse() })
-                    Icon(Icons.Rounded.Fullscreen, "Open Game Mode", tint = Color.White, modifier = Modifier.size(20.dp).clickable { onExpand() })
-                    Icon(Icons.Rounded.Settings, "Settings", tint = Color.White, modifier = Modifier.size(20.dp).clickable { onOpenSettings() })
-                    Icon(Icons.Rounded.Close, "Close", tint = CrimsonTurbo, modifier = Modifier.size(20.dp).clickable { onClose() })
-                    Icon(Icons.Rounded.SwapVert, "Drag", tint = TextSecondary, modifier = dragModifier.size(20.dp))
+                    Icon(Icons.Rounded.ExpandMore, "Hide", tint = Color.White, modifier = Modifier.size(22.dp).clickable { onToggleCollapse() })
+                    Icon(Icons.Rounded.Fullscreen, "Open Game Mode", tint = ElectricCyan, modifier = Modifier.size(22.dp).clickable { onExpand() })
+                    Icon(Icons.Rounded.Settings, "Settings", tint = Color.White, modifier = Modifier.size(22.dp).clickable { onOpenSettings() })
+                    Icon(Icons.Rounded.Close, "Close", tint = CrimsonTurbo, modifier = Modifier.size(22.dp).clickable { onClose() })
+                    Icon(Icons.Rounded.SwapVert, "Drag", tint = TextSecondary, modifier = dragModifier.size(22.dp))
                 }
             }
         }
@@ -944,19 +998,20 @@ private fun FloatingTriggerHandle(
             Box(
                 modifier = dragModifier
                     .padding(top = 4.dp)
-                    .size(42.dp, 30.dp)
+                    .size(40.dp, 26.dp)
                     .clip(RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp))
-                    .background(CrimsonTurbo)
+                    .background(ObsidianVoid.copy(alpha = 0.80f))
+                    .border(1.2.dp, CrimsonTurbo.copy(alpha = 0.9f), RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp))
                     .clickable { onExpand() },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "G",
-                    style = MaterialTheme.typography.titleMedium.copy(
+                    style = MaterialTheme.typography.labelLarge.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontWeight = FontWeight.Bold
                     ),
-                    color = Color.White
+                    color = CrimsonTurbo
                 )
             }
         }

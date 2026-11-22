@@ -1276,7 +1276,7 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.onNodeWithTag("settings_cat_PERFORMANCE").performScrollTo().assertIsDisplayed().performClick()
         composeTestRule.mainClock.advanceTimeBy(250L)
         composeTestRule.onNodeWithText("ACTIVE ENGINE STATUS").assertIsDisplayed()
-        composeTestRule.onNodeWithText("FPS Game").assertIsDisplayed()
+        composeTestRule.onNodeWithText("FPS Game").performScrollTo().assertIsDisplayed()
 
         // 3. Compact landscape One Tap Booster: side-by-side report + buttons displayed cleanly
         composeTestRule.runOnUiThread { screenStep.intValue = 2 }
@@ -1286,6 +1286,63 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.onNodeWithTag("one_tap_step_DEVICE_SCAN").assertIsDisplayed()
         composeTestRule.onNodeWithTag("one_tap_reboost_btn").assertIsDisplayed()
         composeTestRule.onNodeWithTag("one_tap_done_btn").assertIsDisplayed()
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w840dp-h360dp")
+    fun `all five overlay styles occupy compact half-screen width and dismiss on scrim tap`() {
+        var dismissCount = 0
+        val activeStyle = androidx.compose.runtime.mutableStateOf(GamePanelStyle.ROG_STYLE)
+        composeTestRule.mainClock.autoAdvance = false
+
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                GamePanelOverlayContent(
+                    settings = GameTurboSettings(
+                        gamePanelStyle = activeStyle.value,
+                        lowRamOverlayMode = true
+                    ),
+                    telemetry = HardwareTelemetry(actualFps = 120, cpuFreqMHz = 2850, ramUsedPercent = 42),
+                    brightnessFraction = 0.7f,
+                    volumeFraction = 0.6f,
+                    autoBrightness = false,
+                    autoRotate = false,
+                    stopwatchSeconds = 0L,
+                    isStopwatchRunning = false,
+                    statusMessage = null,
+                    callbacks = testOverlayCallbacks(
+                        onMinimizeClick = { dismissCount++ }
+                    )
+                )
+            }
+        }
+
+        GamePanelStyle.entries.forEachIndexed { idx, style ->
+            composeTestRule.runOnUiThread { activeStyle.value = style }
+            composeTestRule.waitForIdle()
+            composeTestRule.mainClock.advanceTimeBy(200L)
+
+            val scrimBounds = composeTestRule.onNodeWithTag("overlay_backdrop_scrim")
+                .assertIsDisplayed()
+                .fetchSemanticsNode().boundsInRoot
+            val dockBounds = composeTestRule.onNodeWithTag("overlay_dock_panel")
+                .assertIsDisplayed()
+                .fetchSemanticsNode().boundsInRoot
+
+            // Half-screen guarantee: docked HUD must stay <= 56% of landscape screen width so FPS battlefield remains open
+            assertTrue(
+                "${style.name} too wide: ${dockBounds.width} vs screen ${scrimBounds.width}",
+                dockBounds.width <= scrimBounds.width * 0.56f
+            )
+
+            // Tap outside / header close handle collapses immediately
+            composeTestRule.onNodeWithTag("overlay_g_handle").assertIsDisplayed().performClick()
+            assertEquals(idx + 1, dismissCount)
+        }
+
+        // Verify tapping the open outside scrim also collapses immediately
+        composeTestRule.onNodeWithTag("overlay_backdrop_scrim").performClick()
+        assertEquals(GamePanelStyle.entries.size + 1, dismissCount)
     }
 
     private fun emptyPerformanceActions(
