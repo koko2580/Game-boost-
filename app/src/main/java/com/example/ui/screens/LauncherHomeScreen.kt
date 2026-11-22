@@ -38,8 +38,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -68,7 +68,6 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Thermostat
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -106,6 +105,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material3.minimumInteractiveComponentSize
 import com.example.ads.AdMobBannerBar
 import com.example.data.CpuMode
 import com.example.data.GameSessionRecord
@@ -155,7 +156,6 @@ fun LauncherHomeScreen(
     onSelectGame: (String) -> Unit,
     onStartPlay: () -> Unit,
     onAddTurboTimeClick: () -> Unit,
-    onOpenOverlayPreview: () -> Unit,
     onToggleOverlayService: () -> Unit,
     onNavigateAddApps: () -> Unit,
     onNavigateSettings: () -> Unit,
@@ -271,26 +271,31 @@ fun LauncherHomeScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .systemBarsPadding()
+                .safeDrawingPadding()
         ) {
             val isWide = maxWidth >= 600.dp
+            val isCompactHeight = maxHeight < 500.dp
 
             Column(modifier = Modifier.fillMaxSize()) {
                 // ORIGINAL TURBO X HEADER BAR
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(
+                            horizontal = 16.dp,
+                            vertical = if (isCompactHeight) 4.dp else 10.dp
+                        ),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
+                        modifier = Modifier.weight(1f, fill = false),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 10.dp else 12.dp)
                     ) {
                         TurboXLogoMark(
                             accentColor = palette.accent,
-                            modifier = Modifier.size(38.dp)
+                            modifier = Modifier.size(if (isCompactHeight) 32.dp else 38.dp)
                         )
                         Column {
                             Text(
@@ -304,7 +309,7 @@ fun LauncherHomeScreen(
                                 },
                                 style = MaterialTheme.typography.headlineMedium.copy(
                                     fontFamily = RajdhaniFontFamily,
-                                    fontSize = if (isWide) 25.sp else 22.sp,
+                                    fontSize = if (isCompactHeight) 21.sp else if (isWide) 25.sp else 22.sp,
                                     letterSpacing = 1.4.sp
                                 )
                             )
@@ -312,15 +317,15 @@ fun LauncherHomeScreen(
                                 text = "PRECISION ENGINE",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontFamily = RajdhaniFontFamily,
-                                    fontSize = 10.sp,
-                                    letterSpacing = 1.6.sp
+                                    fontSize = if (isCompactHeight) 9.sp else 10.sp,
+                                    letterSpacing = 1.5.sp
                                 ),
                                 color = TextMuted
                             )
                         }
 
                         if (isWide) {
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(if (isCompactHeight) 4.dp else 6.dp))
                             HeaderStatusCluster(
                                 clock = currentClock,
                                 telemetry = telemetry,
@@ -336,30 +341,26 @@ fun LauncherHomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        HeaderCircleButton(
-                            icon = Icons.Rounded.SportsEsports,
-                            description = "Open Game Control Panel",
-                            badgeDotColor = if (isOverlayServiceRunning) EmeraldActive else null,
-                            onClick = onOpenOverlayPreview,
-                            testTag = "open_overlay_preview_btn"
-                        )
                         val allPermsOk = permissions.allGranted
                         HeaderCircleButton(
                             icon = Icons.Rounded.Security,
                             description = "Permissions",
                             badgeDotColor = if (allPermsOk) EmeraldActive else CyberAmber,
+                            compact = isCompactHeight,
                             onClick = onNavigatePermissions,
                             testTag = "permissions_button"
                         )
                         HeaderCircleButton(
                             icon = Icons.Rounded.Brush,
                             description = "Wallpaper and Theme",
+                            compact = isCompactHeight,
                             onClick = { showWallpaperDialog = true },
                             testTag = "wallpaper_button"
                         )
                         HeaderCircleButton(
                             icon = Icons.Rounded.Settings,
                             description = "Settings",
+                            compact = isCompactHeight,
                             onClick = onNavigateSettings,
                             testTag = "settings_button"
                         )
@@ -412,14 +413,17 @@ fun LauncherHomeScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                                        .padding(
+                                            horizontal = 16.dp,
+                                            vertical = if (isCompactHeight) 2.dp else 6.dp
+                                        ),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 12.dp else 16.dp)
                                 ) {
                                     // Left Game Dock
                                     Column(
                                         modifier = Modifier
-                                            .width(248.dp)
+                                            .width(if (isCompactHeight) 186.dp else 248.dp)
                                             .fillMaxHeight(),
                                         verticalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -427,15 +431,17 @@ fun LauncherHomeScreen(
                                             games = addedGames,
                                             selectedPackage = selectedGame?.packageName,
                                             accentColor = palette.accent,
+                                            compact = isCompactHeight,
                                             peekAppIcon = peekAppIcon,
                                             loadAppIconAsync = loadAppIconAsync,
                                             onSelectGame = onSelectGame,
                                             onAddGames = onNavigateAddApps,
                                             modifier = Modifier.weight(1f)
                                         )
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Spacer(modifier = Modifier.height(if (isCompactHeight) 5.dp else 8.dp))
                                         AddGameSquareButton(
                                             label = "Add Games",
+                                            compact = isCompactHeight,
                                             onClick = onNavigateAddApps,
                                             modifier = Modifier.fillMaxWidth()
                                         )
@@ -447,28 +453,37 @@ fun LauncherHomeScreen(
                                             .weight(1f)
                                             .fillMaxHeight(),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 12.dp else 16.dp)
                                     ) {
-                                        CockpitHeroCard(
-                                            selectedGame = selectedGame,
-                                            selectedGameIcon = selectedGameIcon,
-                                            settings = settings,
-                                            telemetry = telemetry,
-                                            glowColor = modeGlowColor,
-                                            secondaryColor = palette.secondaryGlow,
-                                            onSelectCpuMode = onSelectCpuMode,
-                                            onBoostRam = onBoostRam,
-                                            onRunPingTest = onRunPingTest,
-                                            onAddGames = onNavigateAddApps,
-                                            modifier = Modifier.weight(1f)
-                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .fillMaxHeight()
+                                                .verticalScroll(rememberScrollState()),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CockpitHeroCard(
+                                                selectedGame = selectedGame,
+                                                selectedGameIcon = selectedGameIcon,
+                                                settings = settings,
+                                                telemetry = telemetry,
+                                                glowColor = modeGlowColor,
+                                                secondaryColor = palette.secondaryGlow,
+                                                compact = isCompactHeight,
+                                                onSelectCpuMode = onSelectCpuMode,
+                                                onBoostRam = onBoostRam,
+                                                onRunPingTest = onRunPingTest,
+                                                onAddGames = onNavigateAddApps,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
 
                                         StartPlayButtonCluster(
                                             accentColor = palette.accent,
                                             accentDeep = palette.accentDeep,
                                             remainingTurboSeconds = remainingTurboSeconds,
-                                            onStartPlay = onStartPlay,
-                                            onQuickPanel = onOpenOverlayPreview
+                                            compact = isCompactHeight,
+                                            onStartPlay = onStartPlay
                                         )
                                     }
                                 }
@@ -509,8 +524,7 @@ fun LauncherHomeScreen(
                                         accentColor = palette.accent,
                                         accentDeep = palette.accentDeep,
                                         remainingTurboSeconds = remainingTurboSeconds,
-                                        onStartPlay = onStartPlay,
-                                        onQuickPanel = onOpenOverlayPreview
+                                        onStartPlay = onStartPlay
                                     )
 
                                     Spacer(modifier = Modifier.height(10.dp))
@@ -577,6 +591,8 @@ fun LauncherHomeScreen(
                                 sessionHistory = sessionHistory,
                                 remainingTurboSeconds = remainingTurboSeconds,
                                 isOverlayRunning = isOverlayServiceRunning,
+                                isWide = isWide,
+                                isCompactHeight = isCompactHeight,
                                 onAddTurboTime = onAddTurboTimeClick,
                                 onBoostRam = onBoostRam,
                                 onRunPingTest = onRunPingTest,
@@ -622,7 +638,10 @@ fun LauncherHomeScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(
+                            horizontal = 16.dp,
+                            vertical = if (isCompactHeight) 2.dp else 4.dp
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
@@ -632,7 +651,7 @@ fun LauncherHomeScreen(
                             .clip(RoundedCornerShape(24.dp))
                             .background(MidnightSurface.copy(alpha = 0.94f))
                             .border(1.dp, CyberBorder.copy(alpha = 0.8f), RoundedCornerShape(24.dp))
-                            .padding(4.dp),
+                            .padding(if (isCompactHeight) 3.dp else 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         CockpitNavPill(
@@ -640,6 +659,7 @@ fun LauncherHomeScreen(
                             icon = Icons.Rounded.Dashboard,
                             selected = selectedBottomTab == 0,
                             accentColor = palette.accent,
+                            compact = isCompactHeight,
                             onClick = { selectedBottomTab = 0 },
                             testTag = "tab_lobby",
                             modifier = Modifier.weight(1f)
@@ -649,6 +669,7 @@ fun LauncherHomeScreen(
                             icon = Icons.Rounded.Analytics,
                             selected = selectedBottomTab == 1,
                             accentColor = palette.accent,
+                            compact = isCompactHeight,
                             onClick = { selectedBottomTab = 1 },
                             testTag = "tab_database",
                             modifier = Modifier.weight(1f)
@@ -660,7 +681,10 @@ fun LauncherHomeScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(
+                            horizontal = 16.dp,
+                            vertical = if (isCompactHeight) 2.dp else 4.dp
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     AdMobBannerBar(
@@ -699,6 +723,7 @@ private fun CockpitHeroCard(
     telemetry: HardwareTelemetry,
     glowColor: Color,
     secondaryColor: Color,
+    compact: Boolean = false,
     onSelectCpuMode: (CpuMode) -> Unit,
     onBoostRam: () -> Unit,
     onRunPingTest: () -> Unit,
@@ -725,7 +750,7 @@ private fun CockpitHeroCard(
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(if (compact) 18.dp else 24.dp))
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
@@ -743,10 +768,13 @@ private fun CockpitHeroCard(
                         secondaryColor.copy(alpha = 0.35f)
                     )
                 ),
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(if (compact) 18.dp else 24.dp)
             )
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(
+                horizontal = if (compact) 12.dp else 16.dp,
+                vertical = if (compact) 8.dp else 16.dp
+            ),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 14.dp)
     ) {
         // 1. Selected Game Profile Header + Quick Boost Chip
         Row(
@@ -756,17 +784,21 @@ private fun CockpitHeroCard(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (compact) 9.dp else 12.dp),
                 modifier = Modifier
                     .weight(1f)
                     .clickable(enabled = selectedGame == null) { onAddGames() }
             ) {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .size(if (compact) 32.dp else 44.dp)
+                        .clip(RoundedCornerShape(if (compact) 9.dp else 12.dp))
                         .background(CyberElevated)
-                        .border(1.dp, animatedAccent.copy(alpha = 0.55f), RoundedCornerShape(12.dp)),
+                        .border(
+                            1.dp,
+                            animatedAccent.copy(alpha = 0.55f),
+                            RoundedCornerShape(if (compact) 9.dp else 12.dp)
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     if (selectedGameIcon != null) {
@@ -775,14 +807,14 @@ private fun CockpitHeroCard(
                             contentDescription = selectedGame?.appName ?: "Selected Game",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(if (compact) 9.dp else 12.dp))
                         )
                     } else {
                         Icon(
                             imageVector = Icons.Rounded.SportsEsports,
                             contentDescription = "Add Game",
                             tint = animatedAccent,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(if (compact) 18.dp else 24.dp)
                         )
                     }
                 }
@@ -792,7 +824,7 @@ private fun CockpitHeroCard(
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontFamily = RajdhaniFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
+                            fontSize = if (compact) 15.sp else 18.sp
                         ),
                         color = TextPrimary,
                         maxLines = 1,
@@ -802,7 +834,7 @@ private fun CockpitHeroCard(
                         text = if (selectedGame != null) {
                             "${targetHz}Hz Target • ${telemetry.cpuCoreCount} Cores Active"
                         } else {
-                            "Tap + below to add a game"
+                            "Tap + to add a game"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = TextSecondary,
@@ -820,18 +852,18 @@ private fun CockpitHeroCard(
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
                 modifier = Modifier
                     .testTag("hero_quick_boost_btn")
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .height(if (compact) 34.dp else 48.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(animatedAccent.copy(alpha = 0.16f))
-                    .border(1.dp, animatedAccent.copy(alpha = 0.65f), RoundedCornerShape(12.dp))
+                    .border(1.dp, animatedAccent.copy(alpha = 0.65f), RoundedCornerShape(10.dp))
                     .clickable { onBoostRam() }
-                    .padding(horizontal = 12.dp)
+                    .padding(horizontal = if (compact) 10.dp else 12.dp)
             ) {
                 Icon(
                     imageVector = Icons.Rounded.RocketLaunch,
                     contentDescription = "Run One Tap Booster",
                     tint = animatedAccent,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(15.dp)
                 )
                 Text(
                     text = "ONE TAP",
@@ -857,7 +889,7 @@ private fun CockpitHeroCard(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp)
         ) {
             TurboCockpitReactor(
                 glowColor = animatedAccent,
@@ -866,24 +898,26 @@ private fun CockpitHeroCard(
                 cpuFreqMHz = telemetry.cpuFreqMHz,
                 ramUsedPercent = telemetry.ramUsedPercent,
                 animatePulse = settings.homeAnimation,
-                modifier = Modifier.size(144.dp)
+                modifier = Modifier.size(if (compact) 88.dp else 144.dp)
             )
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(11.dp)
+                verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 11.dp)
             ) {
                 HeroTelemetryBarRow(
                     label = "CPU CLOCK",
                     valueText = "${telemetry.cpuFreqMHz} MHz",
                     progress = cpuFraction,
-                    barColor = animatedAccent
+                    barColor = animatedAccent,
+                    compact = compact
                 )
                 HeroTelemetryBarRow(
                     label = "MEMORY LOAD",
                     valueText = "${telemetry.ramUsedPercent}% RAM",
                     progress = ramFraction,
-                    barColor = secondaryColor
+                    barColor = secondaryColor,
+                    compact = compact
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -893,12 +927,14 @@ private fun CockpitHeroCard(
                         icon = Icons.Rounded.Thermostat,
                         label = "${telemetry.batteryTempCelsius}°C",
                         tint = if (telemetry.batteryTempCelsius >= 41f) CyberAmber else EmeraldBright,
+                        compact = compact,
                         modifier = Modifier.weight(1f)
                     )
                     HeroMiniBadge(
                         icon = Icons.Rounded.NetworkCheck,
                         label = telemetry.pingMs?.let { "${it} ms" } ?: "Ping",
                         tint = ElectricCyan,
+                        compact = compact,
                         onClick = onRunPingTest,
                         modifier = Modifier.weight(1f)
                     )
@@ -910,10 +946,14 @@ private fun CockpitHeroCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(if (compact) 11.dp else 14.dp))
                 .background(ObsidianVoid.copy(alpha = 0.78f))
-                .border(1.dp, CyberBorder.copy(alpha = 0.65f), RoundedCornerShape(14.dp))
-                .padding(4.dp),
+                .border(
+                    1.dp,
+                    CyberBorder.copy(alpha = 0.65f),
+                    RoundedCornerShape(if (compact) 11.dp else 14.dp)
+                )
+                .padding(if (compact) 3.dp else 4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             listOf(
@@ -936,10 +976,10 @@ private fun CockpitHeroCard(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .height(if (compact) 32.dp else 40.dp)
+                        .clip(RoundedCornerShape(if (compact) 8.dp else 10.dp))
                         .background(bg)
-                        .border(1.dp, border, RoundedCornerShape(10.dp))
+                        .border(1.dp, border, RoundedCornerShape(if (compact) 8.dp else 10.dp))
                         .clickable { onSelectCpuMode(mode) },
                     contentAlignment = Alignment.Center
                 ) {
@@ -964,9 +1004,10 @@ private fun HeroTelemetryBarRow(
     label: String,
     valueText: String,
     progress: Float,
-    barColor: Color
+    barColor: Color,
+    compact: Boolean = false
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -977,7 +1018,7 @@ private fun HeroTelemetryBarRow(
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontFamily = RajdhaniFontFamily,
                     letterSpacing = 0.8.sp,
-                    fontSize = 10.sp
+                    fontSize = if (compact) 9.sp else 10.sp
                 ),
                 color = TextMuted
             )
@@ -985,7 +1026,8 @@ private fun HeroTelemetryBarRow(
                 text = valueText,
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontFamily = RajdhaniFontFamily,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontSize = if (compact) 11.sp else 12.sp
                 ),
                 color = TextPrimary
             )
@@ -996,7 +1038,7 @@ private fun HeroTelemetryBarRow(
             trackColor = CyberSlate,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(6.dp)
+                .height(if (compact) 5.dp else 6.dp)
                 .clip(RoundedCornerShape(3.dp))
         )
     }
@@ -1007,16 +1049,20 @@ private fun HeroMiniBadge(
     icon: ImageVector,
     label: String,
     tint: Color,
+    compact: Boolean = false,
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(if (compact) 8.dp else 10.dp))
             .background(CyberElevated.copy(alpha = 0.85f))
-            .border(1.dp, CyberBorder.copy(alpha = 0.65f), RoundedCornerShape(10.dp))
+            .border(1.dp, CyberBorder.copy(alpha = 0.65f), RoundedCornerShape(if (compact) 8.dp else 10.dp))
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(
+                horizontal = if (compact) 6.dp else 8.dp,
+                vertical = if (compact) 3.dp else 6.dp
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
@@ -1024,7 +1070,7 @@ private fun HeroMiniBadge(
             imageVector = icon,
             contentDescription = null,
             tint = tint,
-            modifier = Modifier.size(14.dp)
+            modifier = Modifier.size(if (compact) 12.dp else 14.dp)
         )
         Spacer(modifier = Modifier.width(4.dp))
         Text(
@@ -1146,6 +1192,7 @@ private fun HeaderCircleButton(
     icon: ImageVector,
     description: String,
     badgeDotColor: Color? = null,
+    compact: Boolean = false,
     onClick: () -> Unit,
     testTag: String
 ) {
@@ -1159,21 +1206,27 @@ private fun HeaderCircleButton(
 
     Box(
         modifier = Modifier
+            .minimumInteractiveComponentSize()
             .scale(scale)
             .testTag(testTag)
-            .size(44.dp)
+            .size(if (compact) 38.dp else 44.dp)
             .clip(CircleShape)
             .background(CyberSlate.copy(alpha = 0.9f))
             .border(1.dp, CyberBorder.copy(alpha = 0.9f), CircleShape)
             .clickable(interactionSource = interactionSource, indication = null) { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = description, tint = TextPrimary, modifier = Modifier.size(20.dp))
+        Icon(
+            icon,
+            contentDescription = description,
+            tint = TextPrimary,
+            modifier = Modifier.size(if (compact) 18.dp else 20.dp)
+        )
         if (badgeDotColor != null) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(7.dp)
+                    .padding(if (compact) 6.dp else 7.dp)
                     .size(7.dp)
                     .clip(CircleShape)
                     .background(badgeDotColor)
@@ -1187,6 +1240,7 @@ private fun GameDockList(
     games: List<InstalledAppInfo>,
     selectedPackage: String?,
     accentColor: Color,
+    compact: Boolean = false,
     peekAppIcon: (String) -> ImageBitmap?,
     loadAppIconAsync: suspend (String) -> ImageBitmap?,
     onSelectGame: (String) -> Unit,
@@ -1201,17 +1255,26 @@ private fun GameDockList(
                 .background(MidnightSurface.copy(alpha = 0.88f))
                 .border(1.dp, CyberBorder, RoundedCornerShape(16.dp))
                 .clickable { onAddGames() }
-                .padding(16.dp),
+                .padding(if (compact) 10.dp else 16.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Rounded.SportsEsports, contentDescription = null, tint = accentColor, modifier = Modifier.size(34.dp))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("No games added", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                Spacer(modifier = Modifier.height(4.dp))
+                Icon(
+                    Icons.Rounded.SportsEsports,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(if (compact) 26.dp else 34.dp)
+                )
+                Spacer(modifier = Modifier.height(if (compact) 4.dp else 8.dp))
+                Text(
+                    "No games added",
+                    style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "Tap below to add installed games",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.bodyMedium,
                     color = TextMuted,
                     textAlign = TextAlign.Center
                 )
@@ -1220,9 +1283,9 @@ private fun GameDockList(
     } else {
         LazyColumn(
             modifier = modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp),
             flingBehavior = rememberTurboFlingBehavior(),
-            contentPadding = PaddingValues(vertical = 4.dp)
+            contentPadding = PaddingValues(vertical = if (compact) 2.dp else 4.dp)
         ) {
             items(games, key = { it.packageName }) { game ->
                 val isSelected = game.packageName == selectedPackage
@@ -1248,38 +1311,49 @@ private fun GameDockList(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(if (compact) 12.dp else 14.dp))
                         .background(bgColor)
-                        .border(if (isSelected) 1.5.dp else 1.dp, borderColor, RoundedCornerShape(14.dp))
+                        .border(
+                            if (isSelected) 1.5.dp else 1.dp,
+                            borderColor,
+                            RoundedCornerShape(if (compact) 12.dp else 14.dp)
+                        )
                         .clickable { onSelectGame(game.packageName) }
-                        .padding(10.dp),
+                        .padding(if (compact) 7.dp else 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)
                 ) {
                     val resolvedDockIcon = iconBitmap
+                    val iconSize = if (compact) 32.dp else 40.dp
                     if (resolvedDockIcon != null) {
                         Image(
                             bitmap = resolvedDockIcon,
                             contentDescription = game.appName,
                             modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .size(iconSize)
+                                .clip(RoundedCornerShape(if (compact) 8.dp else 10.dp))
                         )
                     } else {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .size(iconSize)
+                                .clip(RoundedCornerShape(if (compact) 8.dp else 10.dp))
                                 .background(CyberElevated),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Rounded.SportsEsports, contentDescription = null, tint = TextPrimary)
+                            Icon(
+                                Icons.Rounded.SportsEsports,
+                                contentDescription = null,
+                                tint = TextPrimary,
+                                modifier = Modifier.size(if (compact) 18.dp else 22.dp)
+                            )
                         }
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = game.appName,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = if (compact) MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                            else MaterialTheme.typography.titleMedium,
                             color = TextPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -1357,23 +1431,29 @@ private fun PortraitGameChip(
 @Composable
 private fun AddGameSquareButton(
     label: String? = null,
+    compact: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier
             .testTag("add_games_button")
-            .height(48.dp)
+            .height(if (compact) 42.dp else 48.dp)
             .then(if (label == null) Modifier.width(48.dp) else Modifier)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(if (compact) 12.dp else 14.dp))
             .background(CyberElevated)
-            .border(1.dp, CyberBorder, RoundedCornerShape(14.dp))
+            .border(1.dp, CyberBorder, RoundedCornerShape(if (compact) 12.dp else 14.dp))
             .clickable { onClick() }
             .padding(horizontal = if (label == null) 0.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
-        Icon(Icons.Rounded.Add, contentDescription = "Add Apps", tint = TextPrimary, modifier = Modifier.size(22.dp))
+        Icon(
+            Icons.Rounded.Add,
+            contentDescription = "Add Apps",
+            tint = TextPrimary,
+            modifier = Modifier.size(if (compact) 19.dp else 22.dp)
+        )
         if (label != null) {
             Spacer(modifier = Modifier.width(6.dp))
             Text(label, style = MaterialTheme.typography.labelLarge, color = TextPrimary)
@@ -1386,8 +1466,8 @@ private fun StartPlayButtonCluster(
     accentColor: Color,
     accentDeep: Color,
     remainingTurboSeconds: Long,
+    compact: Boolean = false,
     onStartPlay: () -> Unit,
-    onQuickPanel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val hasTime = remainingTurboSeconds > 0L
@@ -1404,83 +1484,65 @@ private fun StartPlayButtonCluster(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        Box(
+            modifier = Modifier
+                .scale(buttonScale)
+                .testTag("start_play_button")
+                .height(52.dp)
+                .widthIn(min = if (compact) 182.dp else 220.dp, max = if (compact) 216.dp else 264.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    Brush.horizontalGradient(
+                        colors = if (hasTime) {
+                            listOf(accentColor, accentDeep)
+                        } else {
+                            listOf(CyberElevated, CyberSlate)
+                        }
+                    )
+                )
+                .border(
+                    1.2.dp,
+                    if (hasTime) accentColor.copy(alpha = 0.9f) else CyberAmber.copy(alpha = 0.8f),
+                    RoundedCornerShape(16.dp)
+                )
+                .clickable(interactionSource = interactionSource, indication = null) { onStartPlay() }
+                .padding(horizontal = if (compact) 16.dp else 24.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .scale(buttonScale)
-                    .testTag("start_play_button")
-                    .height(52.dp)
-                    .width(200.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            colors = if (hasTime) {
-                                listOf(accentColor, accentDeep)
-                            } else {
-                                listOf(CyberElevated, CyberSlate)
-                            }
-                        )
-                    )
-                    .border(
-                        1.2.dp,
-                        if (hasTime) accentColor.copy(alpha = 0.9f) else CyberAmber.copy(alpha = 0.8f),
-                        RoundedCornerShape(16.dp)
-                    )
-                    .clickable(interactionSource = interactionSource, indication = null) { onStartPlay() },
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = if (hasTime) Icons.Rounded.PlayArrow else Icons.Rounded.Bolt,
-                        contentDescription = null,
-                        tint = if (hasTime) Color.White else CyberAmber,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Text(
-                        text = if (hasTime) "LAUNCH TURBO" else "UNLOCK +1H PLAY",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontFamily = RajdhaniFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 17.sp,
-                            letterSpacing = 1.sp
-                        ),
-                        color = if (hasTime) Color.White else CyberAmber
-                    )
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .testTag("quick_panel_arrow_btn")
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MidnightSurface.copy(alpha = 0.92f))
-                    .border(1.2.dp, accentColor.copy(alpha = 0.7f), RoundedCornerShape(16.dp))
-                    .clickable { onQuickPanel() },
-                contentAlignment = Alignment.Center
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Tune,
-                    contentDescription = "Open Game Panel",
-                    tint = TextPrimary,
-                    modifier = Modifier.size(22.dp)
+                    imageVector = if (hasTime) Icons.Rounded.PlayArrow else Icons.Rounded.Bolt,
+                    contentDescription = null,
+                    tint = if (hasTime) Color.White else CyberAmber,
+                    modifier = Modifier.size(if (compact) 19.dp else 22.dp)
+                )
+                Text(
+                    text = if (hasTime) "LAUNCH TURBO" else "UNLOCK +1H PLAY",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = if (compact) 15.sp else 17.sp,
+                        letterSpacing = 0.9.sp
+                    ),
+                    color = if (hasTime) Color.White else CyberAmber,
+                    maxLines = 1
                 )
             }
         }
         Text(
             text = if (hasTime) {
-                "Turbo Active • ${formatCompactTurboClock(remainingTurboSeconds)} remaining"
+                "Turbo Active • ${formatCompactTurboClock(remainingTurboSeconds)} left"
             } else {
-                "Timer 0:00:00 • Watch 1 short Ad for +1h:00m"
+                "Timer 0:00:00 • Watch Ad (+1h)"
             },
             style = MaterialTheme.typography.labelSmall,
-            color = if (hasTime) EmeraldBright else CyberAmber
+            color = if (hasTime) EmeraldBright else CyberAmber,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            modifier = Modifier.widthIn(max = if (compact) 210.dp else 280.dp)
         )
     }
 }
@@ -1491,6 +1553,7 @@ private fun CockpitNavPill(
     icon: ImageVector,
     selected: Boolean,
     accentColor: Color,
+    compact: Boolean = false,
     onClick: () -> Unit,
     testTag: String,
     modifier: Modifier = Modifier
@@ -1514,7 +1577,7 @@ private fun CockpitNavPill(
     Row(
         modifier = modifier
             .testTag(testTag)
-            .height(44.dp)
+            .height(if (compact) 36.dp else 44.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(bgColor)
             .border(1.dp, borderColor, RoundedCornerShape(20.dp))
@@ -1526,7 +1589,7 @@ private fun CockpitNavPill(
             imageVector = icon,
             contentDescription = null,
             tint = if (selected) accentColor else TextSecondary,
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(if (compact) 16.dp else 18.dp)
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
@@ -1534,7 +1597,7 @@ private fun CockpitNavPill(
             style = MaterialTheme.typography.titleMedium.copy(
                 fontFamily = RajdhaniFontFamily,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                fontSize = 15.sp
+                fontSize = if (compact) 14.sp else 15.sp
             ),
             color = contentColor
         )
@@ -1548,6 +1611,8 @@ private fun TelemetryPageContent(
     sessionHistory: List<GameSessionRecord>,
     remainingTurboSeconds: Long,
     isOverlayRunning: Boolean,
+    isWide: Boolean = false,
+    isCompactHeight: Boolean = false,
     onAddTurboTime: () -> Unit,
     onBoostRam: () -> Unit,
     onRunPingTest: () -> Unit,
@@ -1558,8 +1623,11 @@ private fun TelemetryPageContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState(), flingBehavior = rememberTurboFlingBehavior())
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(
+                horizontal = 16.dp,
+                vertical = if (isCompactHeight) 4.dp else 8.dp
+            ),
+        verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 8.dp else 12.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1571,6 +1639,7 @@ private fun TelemetryPageContent(
                 subtitle = "${telemetry.actualFps} FPS (${String.format(Locale.US, "%.1f", telemetry.frameTimeMs)}ms) • ${telemetry.cpuCoreCount} Cores",
                 icon = Icons.Rounded.Speed,
                 accent = palette.accent,
+                compact = isCompactHeight,
                 modifier = Modifier.weight(1f)
             )
             TelemetrySummaryCard(
@@ -1579,6 +1648,7 @@ private fun TelemetryPageContent(
                 subtitle = "${telemetry.ramAvailableMb} / ${telemetry.ramTotalMb} MB Free",
                 icon = Icons.Rounded.Memory,
                 accent = ElectricCyan,
+                compact = isCompactHeight,
                 modifier = Modifier.weight(1f)
             )
             TelemetrySummaryCard(
@@ -1588,167 +1658,315 @@ private fun TelemetryPageContent(
                     (telemetry.wifiLinkMbps?.let { " ${it}Mbps" } ?: ""),
                 icon = Icons.Rounded.Thermostat,
                 accent = CyberAmber,
+                compact = isCompactHeight,
                 modifier = Modifier.weight(1f)
             )
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(MidnightSurface.copy(alpha = 0.92f))
-                .border(1.dp, CyberBorder, RoundedCornerShape(16.dp))
-                .padding(14.dp)
-        ) {
-            Text("CPU Core Frequencies", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-            Spacer(modifier = Modifier.height(8.dp))
-            val maxFreq = (telemetry.cpuCoreFreqsMHz.maxOrNull() ?: 2400).coerceAtLeast(1800)
-            telemetry.cpuCoreFreqsMHz.forEachIndexed { idx, freq ->
-                val animatedRatio by animateFloatAsState(
-                    targetValue = (freq.toFloat() / maxFreq.toFloat()).coerceIn(0.1f, 1f),
-                    animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
-                    label = "core_bar_$idx"
+        if (isWide) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                CpuCoreFrequenciesCard(
+                    coreFreqsMHz = telemetry.cpuCoreFreqsMHz,
+                    accentColor = palette.accent,
+                    twoColumnGrid = true,
+                    modifier = Modifier.weight(1.05f)
                 )
+
+                Column(
+                    modifier = Modifier.weight(0.95f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    TurboPlayTimeTelemetryCard(
+                        settings = settings,
+                        remainingTurboSeconds = remainingTurboSeconds,
+                        accentColor = palette.accent,
+                        onAddTurboTime = onAddTurboTime
+                    )
+                    TelemetryActionsRow(
+                        settings = settings,
+                        telemetry = telemetry,
+                        isOverlayRunning = isOverlayRunning,
+                        accentColor = palette.accent,
+                        onBoostRam = onBoostRam,
+                        onRunPingTest = onRunPingTest,
+                        onToggleOverlayService = onToggleOverlayService
+                    )
+                    RecentLaunchSessionsCard(sessionHistory = sessionHistory)
+                }
+            }
+        } else {
+            CpuCoreFrequenciesCard(
+                coreFreqsMHz = telemetry.cpuCoreFreqsMHz,
+                accentColor = palette.accent,
+                twoColumnGrid = false,
+                modifier = Modifier.fillMaxWidth()
+            )
+            TurboPlayTimeTelemetryCard(
+                settings = settings,
+                remainingTurboSeconds = remainingTurboSeconds,
+                accentColor = palette.accent,
+                onAddTurboTime = onAddTurboTime
+            )
+            TelemetryActionsRow(
+                settings = settings,
+                telemetry = telemetry,
+                isOverlayRunning = isOverlayRunning,
+                accentColor = palette.accent,
+                onBoostRam = onBoostRam,
+                onRunPingTest = onRunPingTest,
+                onToggleOverlayService = onToggleOverlayService
+            )
+            RecentLaunchSessionsCard(sessionHistory = sessionHistory)
+        }
+    }
+}
+
+@Composable
+private fun CpuCoreFrequenciesCard(
+    coreFreqsMHz: List<Int>,
+    accentColor: Color,
+    twoColumnGrid: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val maxFreq = (coreFreqsMHz.maxOrNull() ?: 2400).coerceAtLeast(1800)
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(MidnightSurface.copy(alpha = 0.92f))
+            .border(1.dp, CyberBorder, RoundedCornerShape(16.dp))
+            .padding(14.dp)
+    ) {
+        Text("CPU Core Frequencies", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+        Spacer(modifier = Modifier.height(8.dp))
+        if (twoColumnGrid && coreFreqsMHz.size > 2) {
+            val indexedCores = coreFreqsMHz.mapIndexed { idx, freq -> idx to freq }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                indexedCores.chunked(2).forEach { pair ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        pair.forEach { (idx, freq) ->
+                            CpuCoreRowItem(
+                                idx = idx,
+                                freq = freq,
+                                maxFreq = maxFreq,
+                                accentColor = accentColor,
+                                compact = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (pair.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        } else {
+            coreFreqsMHz.forEachIndexed { idx, freq ->
+                CpuCoreRowItem(
+                    idx = idx,
+                    freq = freq,
+                    maxFreq = maxFreq,
+                    accentColor = accentColor,
+                    compact = false,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CpuCoreRowItem(
+    idx: Int,
+    freq: Int,
+    maxFreq: Int,
+    accentColor: Color,
+    compact: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val animatedRatio by animateFloatAsState(
+        targetValue = (freq.toFloat() / maxFreq.toFloat()).coerceIn(0.1f, 1f),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
+        label = "core_bar_$idx"
+    )
+    Row(
+        modifier = modifier.padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "CPU $idx",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextSecondary,
+            modifier = Modifier.width(42.dp)
+        )
+        LinearProgressIndicator(
+            progress = { animatedRatio },
+            color = accentColor,
+            trackColor = CyberElevated,
+            modifier = Modifier
+                .weight(1f)
+                .height(7.dp)
+                .clip(RoundedCornerShape(4.dp))
+        )
+        Text(
+            text = "$freq MHz",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextPrimary,
+            modifier = Modifier.width(if (compact) 58.dp else 68.dp),
+            textAlign = TextAlign.End
+        )
+    }
+}
+
+@Composable
+private fun TurboPlayTimeTelemetryCard(
+    settings: GameTurboSettings,
+    remainingTurboSeconds: Long,
+    accentColor: Color,
+    onAddTurboTime: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MidnightSurface.copy(alpha = 0.92f))
+            .border(
+                1.dp,
+                if (remainingTurboSeconds > 0L) EmeraldActive.copy(alpha = 0.6f) else CyberAmber.copy(alpha = 0.6f),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Turbo Play Time", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+            Text(
+                text = "${formatCompactTurboClock(remainingTurboSeconds)} left • ${settings.adsWatchedCount} ads watched",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (remainingTurboSeconds > 0L) EmeraldBright else CyberAmber
+            )
+        }
+        Button(
+            onClick = onAddTurboTime,
+            colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.height(48.dp)
+        ) {
+            Icon(Icons.Rounded.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("+1h Ad", maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun TelemetryActionsRow(
+    settings: GameTurboSettings,
+    telemetry: HardwareTelemetry,
+    isOverlayRunning: Boolean,
+    accentColor: Color,
+    onBoostRam: () -> Unit,
+    onRunPingTest: () -> Unit,
+    onToggleOverlayService: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Button(
+            onClick = onBoostRam,
+            colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+            shape = RoundedCornerShape(12.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp),
+            modifier = Modifier
+                .weight(1f)
+                .height(48.dp)
+        ) {
+            Icon(Icons.Rounded.RocketLaunch, contentDescription = null, modifier = Modifier.size(17.dp))
+            Spacer(modifier = Modifier.width(5.dp))
+            Text(
+                "One Tap (${settings.totalBoostCount})",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Button(
+            onClick = onRunPingTest,
+            colors = ButtonDefaults.buttonColors(containerColor = CyberElevated),
+            shape = RoundedCornerShape(12.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp),
+            modifier = Modifier
+                .weight(0.85f)
+                .height(48.dp)
+        ) {
+            Icon(Icons.Rounded.NetworkCheck, contentDescription = null, modifier = Modifier.size(17.dp))
+            Spacer(modifier = Modifier.width(5.dp))
+            Text(
+                telemetry.pingMs?.let { "${it}ms" } ?: "Ping",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Button(
+            onClick = onToggleOverlayService,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isOverlayRunning) EmeraldActive else CyberElevated
+            ),
+            shape = RoundedCornerShape(12.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp),
+            modifier = Modifier
+                .weight(0.85f)
+                .height(48.dp)
+        ) {
+            Text(
+                if (isOverlayRunning) "HUD ON" else "HUD OFF",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecentLaunchSessionsCard(sessionHistory: List<GameSessionRecord>) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MidnightSurface.copy(alpha = 0.92f))
+            .border(1.dp, CyberBorder, RoundedCornerShape(16.dp))
+            .padding(14.dp)
+    ) {
+        Text("Recent Launch Sessions", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+        Spacer(modifier = Modifier.height(6.dp))
+        if (sessionHistory.isEmpty()) {
+            Text(
+                text = "No game sessions recorded yet. Select a game in Cockpit and tap LAUNCH TURBO.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextMuted
+            )
+        } else {
+            sessionHistory.forEach { rec ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 3.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    Text(rec.appName, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
                     Text(
-                        text = "CPU $idx",
+                        text = "${rec.cpuMode.label} • ${formatTime(rec.timestampMillis)}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary,
-                        modifier = Modifier.width(46.dp)
+                        color = TextSecondary
                     )
-                    LinearProgressIndicator(
-                        progress = { animatedRatio },
-                        color = palette.accent,
-                        trackColor = CyberElevated,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(7.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                    )
-                    Text(
-                        text = "$freq MHz",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextPrimary,
-                        modifier = Modifier.width(68.dp),
-                        textAlign = TextAlign.End
-                    )
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(MidnightSurface.copy(alpha = 0.92f))
-                .border(
-                    1.dp,
-                    if (remainingTurboSeconds > 0L) EmeraldActive.copy(alpha = 0.6f) else CyberAmber.copy(alpha = 0.6f),
-                    RoundedCornerShape(16.dp)
-                )
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Turbo Play Time", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                Text(
-                    text = "${formatCompactTurboClock(remainingTurboSeconds)} left • ${settings.adsWatchedCount} ads watched",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (remainingTurboSeconds > 0L) EmeraldBright else CyberAmber
-                )
-            }
-            Button(
-                onClick = onAddTurboTime,
-                colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.height(48.dp)
-            ) {
-                Icon(Icons.Rounded.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("+1h Ad")
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Button(
-                onClick = onBoostRam,
-                colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-            ) {
-                Icon(Icons.Rounded.RocketLaunch, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("One Tap (${settings.totalBoostCount})")
-            }
-            Button(
-                onClick = onRunPingTest,
-                colors = ButtonDefaults.buttonColors(containerColor = CyberElevated),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-            ) {
-                Icon(Icons.Rounded.NetworkCheck, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(telemetry.pingMs?.let { "${it}ms" } ?: "Ping")
-            }
-            Button(
-                onClick = onToggleOverlayService,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isOverlayRunning) EmeraldActive else CyberElevated
-                ),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-            ) {
-                Text(if (isOverlayRunning) "HUD ON" else "HUD OFF")
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(MidnightSurface.copy(alpha = 0.92f))
-                .border(1.dp, CyberBorder, RoundedCornerShape(16.dp))
-                .padding(14.dp)
-        ) {
-            Text("Recent Launch Sessions", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-            Spacer(modifier = Modifier.height(6.dp))
-            if (sessionHistory.isEmpty()) {
-                Text(
-                    text = "No game sessions recorded yet. Select a game in Cockpit and tap LAUNCH TURBO.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextMuted
-                )
-            } else {
-                sessionHistory.forEach { rec ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(rec.appName, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
-                        Text(
-                            text = "${rec.cpuMode.label} • ${formatTime(rec.timestampMillis)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextSecondary
-                        )
-                    }
                 }
             }
         }
@@ -1762,6 +1980,7 @@ private fun TelemetrySummaryCard(
     subtitle: String,
     icon: ImageVector,
     accent: Color,
+    compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1769,16 +1988,19 @@ private fun TelemetrySummaryCard(
             .clip(RoundedCornerShape(16.dp))
             .background(MidnightSurface.copy(alpha = 0.92f))
             .border(1.dp, CyberBorder, RoundedCornerShape(16.dp))
-            .padding(12.dp)
+            .padding(if (compact) 10.dp else 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
+            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(17.dp))
             Text(title, style = MaterialTheme.typography.labelSmall, color = TextSecondary, maxLines = 1)
         }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(if (compact) 3.dp else 6.dp))
         Text(
             text = value,
-            style = MaterialTheme.typography.headlineMedium.copy(fontFamily = RajdhaniFontFamily),
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontFamily = RajdhaniFontFamily,
+                fontSize = if (compact) 21.sp else 24.sp
+            ),
             color = TextPrimary,
             maxLines = 1
         )
@@ -1798,50 +2020,108 @@ private fun WallpaperThemeDialog(
     onSelectTheme: (WallpaperTheme) -> Unit,
     onDismiss: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        BoxWithConstraints(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(MidnightSurface)
-                .border(1.dp, CyberBorder, RoundedCornerShape(20.dp))
-                .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            val isWide = maxWidth >= 520.dp
+            Column(
+                modifier = Modifier
+                    .widthIn(max = if (isWide) 560.dp else 440.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MidnightSurface)
+                    .border(1.dp, CyberBorder, RoundedCornerShape(20.dp))
+                    .verticalScroll(rememberScrollState())
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("Cockpit Theme & Wallpaper", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
-                Icon(
-                    Icons.Rounded.Close,
-                    contentDescription = "Close",
-                    tint = TextSecondary,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clickable { onDismiss() }
-                )
-            }
-            WallpaperTheme.entries.forEach { theme ->
-                val selected = theme == currentTheme
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (selected) CyberElevated else CyberSlate)
-                        .border(1.dp, if (selected) LocalTurboAccent.current.accent else CyberBorder, RoundedCornerShape(14.dp))
-                        .clickable { onSelectTheme(theme) }
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(theme.label, style = MaterialTheme.typography.bodyLarge, color = TextPrimary)
-                    if (theme == WallpaperTheme.CUSTOM) {
-                        Icon(Icons.Rounded.PhotoLibrary, contentDescription = "Pick photo", tint = TextSecondary)
+                    Text("Cockpit Theme & Wallpaper", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = "Close",
+                        tint = TextSecondary,
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .size(28.dp)
+                            .clickable { onDismiss() }
+                    )
+                }
+                val themes = WallpaperTheme.entries
+                if (isWide) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        themes.chunked(2).forEach { pair ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                pair.forEach { theme ->
+                                    WallpaperThemeOptionRow(
+                                        theme = theme,
+                                        selected = theme == currentTheme,
+                                        onClick = { onSelectTheme(theme) },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                if (pair.size == 1) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    themes.forEach { theme ->
+                        WallpaperThemeOptionRow(
+                            theme = theme,
+                            selected = theme == currentTheme,
+                            onClick = { onSelectTheme(theme) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun WallpaperThemeOptionRow(
+    theme: WallpaperTheme,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) CyberElevated else CyberSlate)
+            .border(1.dp, if (selected) LocalTurboAccent.current.accent else CyberBorder, RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = theme.label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (theme == WallpaperTheme.CUSTOM) {
+            Icon(Icons.Rounded.PhotoLibrary, contentDescription = "Pick photo", tint = TextSecondary)
         }
     }
 }

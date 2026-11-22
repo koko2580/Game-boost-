@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,11 +12,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.PlayCircleFilled
@@ -77,66 +81,16 @@ fun RewardedAdDialog(
                 onDismissRequest = onDismiss,
                 properties = DialogProperties(usePlatformDefaultWidth = false)
             ) {
-                Box(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = 0.74f))
-                        .padding(20.dp),
+                        .safeDrawingPadding()
+                        .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .widthIn(max = 420.dp)
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(MidnightSurface)
-                            .border(1.5.dp, palette.accent.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
-                            .padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(60.dp)
-                                .clip(CircleShape)
-                                .background(palette.accent.copy(alpha = 0.16f))
-                                .border(1.dp, palette.accent, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Schedule,
-                                contentDescription = "Turbo Time",
-                                tint = palette.accent,
-                                modifier = Modifier.size(32.dp)
-                            )
-                        }
-
-                        Text(
-                            text = if (step.launchAfterReward && remainingTurboSeconds <= 0L) {
-                                "Turbo Time Required"
-                            } else {
-                                "Add +1 Hour Turbo Time"
-                            },
-                            style = MaterialTheme.typography.headlineMedium.copy(
-                                fontFamily = RajdhaniFontFamily,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = TextPrimary,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Text(
-                            text = if (step.launchAfterReward && step.targetGameName != null) {
-                                "Time is 0:00:00. Watch 1 Rewarded Ad to unlock +1 hour (1:00:00) and launch ${step.targetGameName}."
-                            } else {
-                                "Balance: ${formatCountdownClock(remainingTurboSeconds)}. Watch 1 Rewarded Ad to add +1 hour (1:00:00) Turbo Time."
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary,
-                            textAlign = TextAlign.Center
-                        )
-
-                        // Reward Summary Card + Clean Cooldown / Load Status
+                    val isLandscape = maxWidth >= 560.dp && maxWidth > maxHeight
+                    val summaryCard: @Composable () -> Unit = {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -228,7 +182,9 @@ fun RewardedAdDialog(
                                 }
                             }
                         }
+                    }
 
+                    val actionRow: @Composable () -> Unit = {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -283,6 +239,122 @@ fun RewardedAdDialog(
                                     )
                                 }
                             }
+                        }
+                    }
+
+                    val titleString = if (step.launchAfterReward && remainingTurboSeconds <= 0L) {
+                        "Turbo Time Required"
+                    } else {
+                        "Add +1 Hour Turbo Time"
+                    }
+                    val bodyString = if (step.launchAfterReward && step.targetGameName != null) {
+                        "Time is 0:00:00. Watch 1 Rewarded Ad to unlock +1 hour (1:00:00) and launch ${step.targetGameName}."
+                    } else {
+                        "Balance: ${formatCountdownClock(remainingTurboSeconds)}. Watch 1 Rewarded Ad to add +1 hour (1:00:00) Turbo Time."
+                    }
+
+                    if (isLandscape) {
+                        Row(
+                            modifier = Modifier
+                                .widthIn(max = 640.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MidnightSurface)
+                                .border(1.5.dp, palette.accent.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
+                                .verticalScroll(rememberScrollState())
+                                .padding(18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(18.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(0.45f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .clip(CircleShape)
+                                        .background(palette.accent.copy(alpha = 0.16f))
+                                        .border(1.dp, palette.accent, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Schedule,
+                                        contentDescription = "Turbo Time",
+                                        tint = palette.accent,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+                                Text(
+                                    text = titleString,
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontFamily = RajdhaniFontFamily,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = TextPrimary,
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = bodyString,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                            Column(
+                                modifier = Modifier.weight(0.55f),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                summaryCard()
+                                actionRow()
+                            }
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .widthIn(max = 420.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MidnightSurface)
+                                .border(1.5.dp, palette.accent.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
+                                .verticalScroll(rememberScrollState())
+                                .padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .clip(CircleShape)
+                                    .background(palette.accent.copy(alpha = 0.16f))
+                                    .border(1.dp, palette.accent, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Schedule,
+                                    contentDescription = "Turbo Time",
+                                    tint = palette.accent,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            Text(
+                                text = titleString,
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontFamily = RajdhaniFontFamily,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = TextPrimary,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = bodyString,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                            summaryCard()
+                            actionRow()
                         }
                     }
                 }

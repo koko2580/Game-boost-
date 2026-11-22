@@ -26,7 +26,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -127,7 +127,7 @@ fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(ObsidianVoid)
-            .systemBarsPadding()
+            .safeDrawingPadding()
     ) {
         // Sleek Original Turbo X Top Bar
         TurboXTopBar(
@@ -148,13 +148,14 @@ fun SettingsScreen(
 
         BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
             val isWide = maxWidth >= 600.dp
+            val isCompactHeight = maxHeight < 480.dp
 
             if (isWide) {
                 Row(modifier = Modifier.fillMaxSize()) {
                     // Left Category Rail
                     Column(
                         modifier = Modifier
-                            .width(228.dp)
+                            .width(if (isCompactHeight) 196.dp else 228.dp)
                             .fillMaxHeight()
                             .background(Color(0xFF0B0F1A))
                             .verticalScroll(rememberScrollState())
@@ -177,7 +178,7 @@ fun SettingsScreen(
                                         }
                                     )
                                     .clickable { selectedCategory = category }
-                                    .height(54.dp),
+                                    .height(if (isCompactHeight) 46.dp else 54.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(

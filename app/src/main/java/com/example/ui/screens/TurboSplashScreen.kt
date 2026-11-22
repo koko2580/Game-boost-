@@ -26,8 +26,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -196,14 +197,21 @@ fun TurboSplashScreen(
                 indication = null,
                 enabled = canSkip
             ) { onFinished() }
-            .systemBarsPadding()
+            .safeDrawingPadding()
     ) {
-        val dialSize = if (maxWidth >= 600.dp) 256.dp else 224.dp
+        val isLandscape = maxWidth > maxHeight
+        val dialSize = if (isLandscape) {
+            (maxHeight * 0.62f).coerceIn(148.dp, 236.dp)
+        } else if (maxWidth >= 600.dp) {
+            256.dp
+        } else {
+            224.dp
+        }
 
         // Subtle ambient crimson + cyan backdrop glow
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val cx = size.width / 2f
-            val cy = size.height * 0.44f
+            val cx = if (isLandscape) size.width * 0.34f else size.width / 2f
+            val cy = if (isLandscape) size.height * 0.50f else size.height * 0.44f
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
@@ -219,145 +227,128 @@ fun TurboSplashScreen(
             )
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Center Hero Emblem + Counter-Rotating Energy Rings
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
+        val emblemDial: @Composable () -> Unit = {
+            Box(
+                modifier = Modifier.size(dialSize),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier.size(dialSize),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val w = size.width
-                        val h = size.height
-                        val cx = w / 2f
-                        val cy = h / 2f
-                        val radius = minOf(w, h) * 0.47f
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val w = size.width
+                    val h = size.height
+                    val cx = w / 2f
+                    val cy = h / 2f
+                    val radius = minOf(w, h) * 0.47f
 
-                        // Expanding shockwave pulse
-                        if (pulseWave.value in 0.01f..0.99f) {
-                            drawCircle(
-                                color = accent.copy(alpha = (1f - pulseWave.value) * 0.45f),
-                                radius = radius * (0.65f + 0.42f * pulseWave.value),
-                                center = Offset(cx, cy),
-                                style = Stroke(width = 2.5.dp.toPx())
-                            )
-                        }
-
-                        // Outer rotating precision tick ring
-                        rotate(degrees = outerRotation, pivot = Offset(cx, cy)) {
-                            val tickCount = 48
-                            for (i in 0 until tickCount) {
-                                val rad = (i * (360f / tickCount)) * (PI / 180.0)
-                                val major = i % 4 == 0
-                                val rOuter = radius * 0.98f * ringReveal.value
-                                val rInner = radius * (if (major) 0.90f else 0.94f) * ringReveal.value
-                                drawLine(
-                                    color = if (major) accent.copy(alpha = 0.78f) else CyberBorder.copy(alpha = 0.45f),
-                                    start = Offset(cx + (rInner * cos(rad)).toFloat(), cy + (rInner * sin(rad)).toFloat()),
-                                    end = Offset(cx + (rOuter * cos(rad)).toFloat(), cy + (rOuter * sin(rad)).toFloat()),
-                                    strokeWidth = if (major) 2.dp.toPx() else 1.1.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                            }
-                        }
-
-                        // Counter-rotating dual turbine arcs
-                        rotate(degrees = innerRotation, pivot = Offset(cx, cy)) {
-                            val arcRadius = radius * 0.82f
-                            val topLeft = Offset(cx - arcRadius, cy - arcRadius)
-                            val arcSize = Size(arcRadius * 2f, arcRadius * 2f)
-                            drawArc(
-                                color = accent.copy(alpha = 0.85f * ringReveal.value),
-                                startAngle = 18f,
-                                sweepAngle = 110f * ringReveal.value,
-                                useCenter = false,
-                                topLeft = topLeft,
-                                size = arcSize,
-                                style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round)
-                            )
-                            drawArc(
-                                color = ElectricCyan.copy(alpha = 0.72f * ringReveal.value),
-                                startAngle = 198f,
-                                sweepAngle = 110f * ringReveal.value,
-                                useCenter = false,
-                                topLeft = topLeft,
-                                size = arcSize,
-                                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                            )
-                        }
-
-                        // Crisp inner circular frame matching uploaded logo background (#041022)
+                    if (pulseWave.value in 0.01f..0.99f) {
                         drawCircle(
-                            color = SplashNavyCore,
-                            radius = radius * 0.72f,
-                            center = Offset(cx, cy)
-                        )
-                        drawCircle(
-                            color = accent.copy(alpha = 0.42f * glowBreath),
-                            radius = radius * 0.72f,
+                            color = accent.copy(alpha = (1f - pulseWave.value) * 0.45f),
+                            radius = radius * (0.65f + 0.42f * pulseWave.value),
                             center = Offset(cx, cy),
-                            style = Stroke(width = 1.4.dp.toPx())
+                            style = Stroke(width = 2.5.dp.toPx())
                         )
                     }
 
-                    // Official Turbo X Artwork Emblem
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_turbo_x_logo),
-                        contentDescription = "Turbo X Emblem",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .size(dialSize * 0.60f)
-                            .clip(CircleShape)
-                            .scale(logoScale.value)
-                            .alpha(logoAlpha.value)
+                    rotate(degrees = outerRotation, pivot = Offset(cx, cy)) {
+                        val tickCount = 48
+                        for (i in 0 until tickCount) {
+                            val rad = (i * (360f / tickCount)) * (PI / 180.0)
+                            val major = i % 4 == 0
+                            val rOuter = radius * 0.98f * ringReveal.value
+                            val rInner = radius * (if (major) 0.90f else 0.94f) * ringReveal.value
+                            drawLine(
+                                color = if (major) accent.copy(alpha = 0.78f) else CyberBorder.copy(alpha = 0.45f),
+                                start = Offset(cx + (rInner * cos(rad)).toFloat(), cy + (rInner * sin(rad)).toFloat()),
+                                end = Offset(cx + (rOuter * cos(rad)).toFloat(), cy + (rOuter * sin(rad)).toFloat()),
+                                strokeWidth = if (major) 2.dp.toPx() else 1.1.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
+                    }
+
+                    rotate(degrees = innerRotation, pivot = Offset(cx, cy)) {
+                        val arcRadius = radius * 0.82f
+                        val topLeft = Offset(cx - arcRadius, cy - arcRadius)
+                        val arcSize = Size(arcRadius * 2f, arcRadius * 2f)
+                        drawArc(
+                            color = accent.copy(alpha = 0.85f * ringReveal.value),
+                            startAngle = 18f,
+                            sweepAngle = 110f * ringReveal.value,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                        drawArc(
+                            color = ElectricCyan.copy(alpha = 0.72f * ringReveal.value),
+                            startAngle = 198f,
+                            sweepAngle = 110f * ringReveal.value,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                    }
+
+                    drawCircle(
+                        color = SplashNavyCore,
+                        radius = radius * 0.72f,
+                        center = Offset(cx, cy)
+                    )
+                    drawCircle(
+                        color = accent.copy(alpha = 0.42f * glowBreath),
+                        radius = radius * 0.72f,
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 1.4.dp.toPx())
                     )
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
-
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Image(
+                    painter = painterResource(id = R.drawable.ic_turbo_x_logo),
+                    contentDescription = "Turbo X Emblem",
+                    contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .alpha(titleAlpha.value)
-                        .padding(top = titleOffsetY.value.dp)
-                ) {
-                    Text(
-                        text = "PRECISION PERFORMANCE ENGINE",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontFamily = RajdhaniFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 3.2.sp
-                        ),
-                        color = accent
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "FPS • TELEMETRY • OVERDRIVE",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            letterSpacing = 2.sp
-                        ),
-                        color = TextSecondary
-                    )
-                }
+                        .size(dialSize * 0.60f)
+                        .clip(CircleShape)
+                        .scale(logoScale.value)
+                        .alpha(logoAlpha.value)
+                )
             }
+        }
 
-            // Bottom Engine Calibration Progress & Verified Badge
+        val titleBlock: @Composable (Alignment.Horizontal) -> Unit = { align ->
+            Column(
+                horizontalAlignment = align,
+                modifier = Modifier
+                    .alpha(titleAlpha.value)
+                    .padding(top = titleOffsetY.value.dp)
+            ) {
+                Text(
+                    text = "PRECISION PERFORMANCE ENGINE",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 3.2.sp
+                    ),
+                    color = accent
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "FPS • TELEMETRY • OVERDRIVE",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        letterSpacing = 2.sp
+                    ),
+                    color = TextSecondary
+                )
+            }
+        }
+
+        val progressBlock: @Composable (Alignment.Horizontal) -> Unit = { align ->
             Column(
                 modifier = Modifier
-                    .widthIn(max = 360.dp)
+                    .widthIn(max = 380.dp)
                     .fillMaxWidth()
                     .alpha(titleAlpha.value),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                horizontalAlignment = align,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
@@ -429,6 +420,43 @@ fun TurboSplashScreen(
                         color = TextMuted
                     )
                 }
+            }
+        }
+
+        if (isLandscape) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 32.dp, vertical = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                emblemDial()
+                Spacer(modifier = Modifier.width(36.dp))
+                Column(
+                    modifier = Modifier.widthIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    titleBlock(Alignment.Start)
+                    progressBlock(Alignment.Start)
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    emblemDial()
+                    Spacer(modifier = Modifier.height(18.dp))
+                    titleBlock(Alignment.CenterHorizontally)
+                }
+                progressBlock(Alignment.CenterHorizontally)
             }
         }
     }

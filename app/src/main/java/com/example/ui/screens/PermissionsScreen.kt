@@ -19,16 +19,17 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -337,137 +338,90 @@ fun PermissionsScreen(
             )
         }
 
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .safeDrawingPadding()
         ) {
-            if (!isOnboardingMode) {
-                TurboXTopBar(
-                    title = "System Permissions",
-                    subtitle = "Hardware & Overlay Access",
-                    onBack = onBack,
-                    backTestTag = "permissions_back_btn"
-                ) {
-                    HelpBadgeButton(onClick = { showHelpDialog = true })
-                }
+            val isLandscape = maxWidth >= 600.dp && maxWidth > maxHeight
+            val leftPaneWidth = (maxWidth * 0.38f).coerceIn(255.dp, 340.dp)
+            val missingCount = permissions.totalCount - permissions.grantedCount
+            val ctaBrush = if (permissions.allGranted) {
+                Brush.horizontalGradient(listOf(EmeraldActive, EmeraldBright))
             } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                Brush.horizontalGradient(listOf(CrimsonTurbo, Color(0xFFFF5252)))
+            }
+
+            val topHeaderBar: @Composable () -> Unit = {
+                if (!isOnboardingMode) {
+                    TurboXTopBar(
+                        title = "System Permissions",
+                        subtitle = "Hardware & Overlay Access",
+                        onBack = onBack,
+                        backTestTag = "permissions_back_btn"
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(heroAccent.copy(alpha = 0.16f))
-                                .border(1.dp, heroAccent.copy(alpha = 0.6f), RoundedCornerShape(12.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Rounded.Security, contentDescription = null, tint = heroAccent, modifier = Modifier.size(21.dp))
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "TURBO X AUTHORIZATION",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontFamily = RajdhaniFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp
-                                ),
-                                color = TextPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "Initial Setup • System Access",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = TextSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                        HelpBadgeButton(onClick = { showHelpDialog = true })
                     }
-                    HelpBadgeButton(onClick = { showHelpDialog = true })
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.widthIn(max = 580.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Hero Reactor Progress Card
-                    PermissionHeroCard(
-                        grantedCount = permissions.grantedCount,
-                        totalCount = permissions.totalCount,
-                        allGranted = permissions.allGranted,
-                        animatedProgress = animatedProgress,
-                        accent = heroAccent,
-                        items = items
-                    )
-
-                    // Staggered Animated Permission Cards
-                    items.forEachIndexed { index, item ->
-                        AnimatedVisibility(
-                            visible = visibleCards,
-                            enter = fadeIn(tween(240, delayMillis = index * 55)) +
-                                slideInVertically(
-                                    animationSpec = tween(260, delayMillis = index * 55, easing = FastOutSlowInEasing),
-                                    initialOffsetY = { it / 4 }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = if (isLandscape) 8.dp else 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(heroAccent.copy(alpha = 0.16f))
+                                    .border(1.dp, heroAccent.copy(alpha = 0.6f), RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Rounded.Security, contentDescription = null, tint = heroAccent, modifier = Modifier.size(20.dp))
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "TURBO X AUTHORIZATION",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontFamily = RajdhaniFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp
+                                    ),
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                        ) {
-                            PermissionCard(item = item)
+                                Text(
+                                    text = "Initial Setup • System Access",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
+                        HelpBadgeButton(onClick = { showHelpDialog = true })
                     }
-
-                    Spacer(modifier = Modifier.height(6.dp))
                 }
             }
 
-            // Bottom Sticky Authorization Dock
-            Surface(
-                color = MidnightSurface.copy(alpha = 0.96f),
-                tonalElevation = 8.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, CyberBorder.copy(alpha = 0.6f), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            ) {
+            val grantActionButtons: @Composable () -> Unit = {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val missingCount = permissions.totalCount - permissions.grantedCount
-                    val ctaBrush = if (permissions.allGranted) {
-                        Brush.horizontalGradient(listOf(EmeraldActive, EmeraldBright))
-                    } else {
-                        Brush.horizontalGradient(listOf(CrimsonTurbo, Color(0xFFFF5252)))
-                    }
-
                     Box(
                         modifier = Modifier
                             .widthIn(max = 560.dp)
                             .fillMaxWidth()
-                            .height(54.dp)
+                            .height(if (isLandscape) 48.dp else 54.dp)
                             .testTag("grant_all_permissions_btn")
                             .minimumInteractiveComponentSize()
                             .clip(RoundedCornerShape(14.dp))
@@ -489,13 +443,14 @@ fun PermissionsScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp)
                         ) {
                             Icon(
                                 imageVector = if (permissions.allGranted) Icons.Rounded.VerifiedUser else Icons.Rounded.Bolt,
                                 contentDescription = null,
                                 tint = if (permissions.allGranted) Color(0xFF04150E) else Color.White,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(19.dp)
                             )
                             Text(
                                 text = if (permissions.allGranted) {
@@ -506,7 +461,8 @@ fun PermissionsScreen(
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontFamily = RajdhaniFontFamily,
                                     fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp
+                                    letterSpacing = 0.8.sp,
+                                    fontSize = if (isLandscape) 14.sp else 16.sp
                                 ),
                                 color = if (permissions.allGranted) Color(0xFF04150E) else Color.White,
                                 maxLines = 1,
@@ -522,14 +478,129 @@ fun PermissionsScreen(
                                 .minimumInteractiveComponentSize()
                                 .clip(RoundedCornerShape(10.dp))
                                 .clickable { onCompleteOnboarding() }
-                                .padding(horizontal = 20.dp, vertical = 10.dp),
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = "Continue to Cockpit (${permissions.grantedCount}/${permissions.totalCount} Ready)",
                                 style = MaterialTheme.typography.labelLarge,
-                                color = TextSecondary
+                                color = TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
+                        }
+                    }
+                }
+            }
+
+            Column(modifier = Modifier.fillMaxSize()) {
+                topHeaderBar()
+
+                if (isLandscape) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // Left Pane: Progress Hero + Pinned Authorization Actions
+                        Column(
+                            modifier = Modifier
+                                .width(leftPaneWidth)
+                                .fillMaxHeight()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            PermissionHeroCard(
+                                grantedCount = permissions.grantedCount,
+                                totalCount = permissions.totalCount,
+                                allGranted = permissions.allGranted,
+                                animatedProgress = animatedProgress,
+                                accent = heroAccent,
+                                items = items
+                            )
+                            grantActionButtons()
+                        }
+
+                        // Right Pane: Scrollable Permission Cards
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .verticalScroll(rememberScrollState())
+                                .padding(bottom = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items.forEachIndexed { index, item ->
+                                AnimatedVisibility(
+                                    visible = visibleCards,
+                                    enter = fadeIn(tween(240, delayMillis = index * 55)) +
+                                        slideInVertically(
+                                            animationSpec = tween(260, delayMillis = index * 55, easing = FastOutSlowInEasing),
+                                            initialOffsetY = { it / 4 }
+                                        )
+                                ) {
+                                    PermissionCard(item = item)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 18.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.widthIn(max = 580.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            PermissionHeroCard(
+                                grantedCount = permissions.grantedCount,
+                                totalCount = permissions.totalCount,
+                                allGranted = permissions.allGranted,
+                                animatedProgress = animatedProgress,
+                                accent = heroAccent,
+                                items = items
+                            )
+
+                            items.forEachIndexed { index, item ->
+                                AnimatedVisibility(
+                                    visible = visibleCards,
+                                    enter = fadeIn(tween(240, delayMillis = index * 55)) +
+                                        slideInVertically(
+                                            animationSpec = tween(260, delayMillis = index * 55, easing = FastOutSlowInEasing),
+                                            initialOffsetY = { it / 4 }
+                                        )
+                                ) {
+                                    PermissionCard(item = item)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+                    }
+
+                    // Bottom Sticky Authorization Dock (Portrait / Compact fallback)
+                    Surface(
+                        color = MidnightSurface.copy(alpha = 0.96f),
+                        tonalElevation = 8.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, CyberBorder.copy(alpha = 0.6f), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            grantActionButtons()
                         }
                     }
                 }

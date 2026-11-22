@@ -30,8 +30,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -217,7 +217,7 @@ class MainActivity : ComponentActivity() {
                 requestedOrientation = if (settings.rotationLock) {
                     ActivityInfo.SCREEN_ORIENTATION_LOCKED
                 } else {
-                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 }
             }
             LaunchedEffect(settings.lockBrightness, brightness) {
@@ -276,7 +276,6 @@ class MainActivity : ComponentActivity() {
                                 onSelectGame = viewModel::selectGame,
                                 onStartPlay = viewModel::launchSelectedGame,
                                 onAddTurboTimeClick = { viewModel.openWatchAdPrompt() },
-                                onOpenOverlayPreview = viewModel::openInAppOverlay,
                                 onToggleOverlayService = {
                                     if (isOverlayServiceRunning) {
                                         viewModel.stopFloatingOverlayService()
@@ -403,7 +402,7 @@ class MainActivity : ComponentActivity() {
                             Column(
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
-                                    .systemBarsPadding()
+                                    .safeDrawingPadding()
                                     .padding(end = 16.dp, top = 62.dp)
                                     .offset { IntOffset(hudOffsetX.roundToInt(), hudOffsetY.roundToInt()) }
                                     .pointerInput(Unit) {

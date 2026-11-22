@@ -12,13 +12,17 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -109,15 +113,20 @@ fun OneTapBoosterDialog(
         onDismissRequest = { if (!state.isRunning) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 20.dp),
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             contentAlignment = Alignment.Center
         ) {
+            val isLandscape = maxWidth >= 560.dp && maxWidth > maxHeight
+            val dialogMaxHeight = (maxHeight * 0.94f).coerceAtLeast(280.dp)
+
             Column(
                 modifier = Modifier
-                    .widthIn(max = 520.dp)
+                    .widthIn(max = if (isLandscape) 720.dp else 520.dp)
+                    .heightIn(max = dialogMaxHeight)
                     .fillMaxWidth()
                     .testTag("one_tap_booster_dialog")
                     .clip(RoundedCornerShape(22.dp))
@@ -127,8 +136,8 @@ fun OneTapBoosterDialog(
                         )
                     )
                     .border(1.2.dp, accent.copy(alpha = 0.65f), RoundedCornerShape(22.dp))
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // Header
                 Row(
@@ -228,28 +237,59 @@ fun OneTapBoosterDialog(
                     )
                 }
 
-                // Scrollable Body: Final Report Highlight + 6-Step Diagnostics
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 410.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    AnimatedVisibility(
-                        visible = state.isCompleted,
-                        enter = fadeIn(tween(240)),
-                        exit = fadeOut(tween(150))
+                // Scrollable Body: Side-by-side in Landscape when completed, vertical otherwise
+                if (isLandscape && state.isCompleted) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        FinalPerformanceReportBanner(
-                            state = state,
-                            scoreColor = scoreColor,
-                            onOpenPowerSettings = onOpenPowerSettings
-                        )
+                        Column(
+                            modifier = Modifier
+                                .weight(0.46f)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            FinalPerformanceReportBanner(
+                                state = state,
+                                scoreColor = scoreColor,
+                                onOpenPowerSettings = onOpenPowerSettings
+                            )
+                        }
+                        Column(
+                            modifier = Modifier
+                                .weight(0.54f)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            state.steps.forEach { step ->
+                                BoosterStepCard(step = step, accent = accent)
+                            }
+                        }
                     }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        AnimatedVisibility(
+                            visible = state.isCompleted,
+                            enter = fadeIn(tween(240)),
+                            exit = fadeOut(tween(150))
+                        ) {
+                            FinalPerformanceReportBanner(
+                                state = state,
+                                scoreColor = scoreColor,
+                                onOpenPowerSettings = onOpenPowerSettings
+                            )
+                        }
 
-                    state.steps.forEach { step ->
-                        BoosterStepCard(step = step, accent = accent)
+                        state.steps.forEach { step ->
+                            BoosterStepCard(step = step, accent = accent)
+                        }
                     }
                 }
 

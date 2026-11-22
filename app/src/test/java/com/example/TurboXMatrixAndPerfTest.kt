@@ -34,11 +34,15 @@ import com.example.ui.components.GamePanelOverlayContent
 import com.example.ui.components.NetworkGateOverlay
 import com.example.ui.components.OneTapBoosterDialog
 import com.example.ui.components.OverlayCallbacks
+import com.example.ui.components.RewardedAdDialog
+import com.example.ui.screens.AddAppsScreen
 import com.example.ui.screens.LauncherHomeScreen
 import com.example.ui.screens.PerformanceActions
 import com.example.ui.screens.PermissionsScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.TurboSplashScreen
 import com.example.ui.theme.TurboGameXTheme
+import com.example.viewmodel.RewardedAdStep
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -175,7 +179,6 @@ class TurboXMatrixAndPerfTest {
                     onSelectGame = {},
                     onStartPlay = {},
                     onAddTurboTimeClick = {},
-                    onOpenOverlayPreview = {},
                     onToggleOverlayService = {},
                     onNavigateAddApps = {},
                     onNavigateSettings = {},
@@ -240,7 +243,6 @@ class TurboXMatrixAndPerfTest {
                     onSelectGame = {},
                     onStartPlay = {},
                     onAddTurboTimeClick = {},
-                    onOpenOverlayPreview = {},
                     onToggleOverlayService = {},
                     onNavigateAddApps = {},
                     onNavigateSettings = {},
@@ -958,6 +960,212 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("toggle_auto_detect_game").performScrollTo().performClick()
         assertTrue(latestSettings.autoDetectGameLaunch)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w840dp-h360dp")
+    fun `landscape phone launcher renders cockpit and telemetry cleanly without clipping`() {
+        val games = listOf(
+            InstalledAppInfo("com.test.alpha", "Cyber Striker", "3.1.0", false),
+            InstalledAppInfo("com.test.beta", "Apex Drift", "1.4.2", false)
+        )
+        val freqs = listOf(1800, 1800, 2200, 2200, 2400, 2400, 2850, 3050)
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                LauncherHomeScreen(
+                    settings = GameTurboSettings(
+                        addedGamePackages = games.map { it.packageName }.toSet(),
+                        selectedGamePackage = games.first().packageName
+                    ),
+                    telemetry = HardwareTelemetry(
+                        actualFps = 120,
+                        cpuFreqMHz = 2850,
+                        cpuCoreCount = 8,
+                        cpuCoreFreqsMHz = freqs,
+                        ramUsedPercent = 45
+                    ),
+                    permissions = PermissionStatus(true, true, true, true, true),
+                    addedGames = games,
+                    sessionHistory = emptyList(),
+                    remainingTurboSeconds = 3600L,
+                    statusMessage = null,
+                    isOverlayServiceRunning = false,
+                    peekAppIcon = { null },
+                    loadAppIconAsync = { null },
+                    onSelectGame = {},
+                    onStartPlay = {},
+                    onAddTurboTimeClick = {},
+                    onToggleOverlayService = {},
+                    onNavigateAddApps = {},
+                    onNavigateSettings = {},
+                    onNavigatePermissions = {},
+                    onBoostRam = {},
+                    onRunPingTest = {},
+                    onSelectCpuMode = {},
+                    onSelectWallpaperTheme = { _, _ -> },
+                    onDismissStatus = {}
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("start_play_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("hero_quick_boost_btn").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("add_games_button").assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("tab_database").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("CPU Core Frequencies").assertIsDisplayed()
+        composeTestRule.onNodeWithText("HUD OFF").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w840dp-h360dp")
+    fun `landscape phone splash permissions add apps and dialogs fit without clipping`() {
+        // 1. Splash screen
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                TurboSplashScreen(onFinished = {})
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(600L)
+        composeTestRule.onNodeWithTag("turbo_splash_screen").assertIsDisplayed()
+        composeTestRule.onNodeWithText("PRECISION PERFORMANCE ENGINE").assertIsDisplayed()
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w840dp-h360dp")
+    fun `landscape phone permissions two-pane layout displays controls and scrolls all cards`() {
+        var skipClicked = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                PermissionsScreen(
+                    permissions = PermissionStatus(),
+                    onRefreshPermissions = {},
+                    onRequestDnd = {},
+                    onRequestOverlay = {},
+                    onRequestWriteSettings = {},
+                    onRequestUsageStats = {},
+                    onBack = {},
+                    isOnboardingMode = true,
+                    onCompleteOnboarding = { skipClicked = true }
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("grant_all_permissions_btn").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("skip_permissions_btn").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("perm_overlay_card").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("perm_notifications_card").performScrollTo().assertIsDisplayed()
+        assertTrue(skipClicked)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w840dp-h360dp")
+    fun `landscape phone add apps two-column grid toggles app cleanly`() {
+        var toggledPkg: String? = null
+        val apps = listOf(
+            InstalledAppInfo("com.test.one", "Star Arena", "1.0", false),
+            InstalledAppInfo("com.test.two", "Mecha Pulse", "2.1", false)
+        )
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                AddAppsScreen(
+                    apps = apps,
+                    addedPackages = setOf("com.test.one"),
+                    isLoading = false,
+                    peekAppIcon = { null },
+                    loadAppIconAsync = { null },
+                    onToggleApp = { toggledPkg = it },
+                    onBack = {}
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Star Arena").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Mecha Pulse").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("toggle_app_com.test.two").performClick()
+        assertEquals("com.test.two", toggledPkg)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w840dp-h360dp")
+    fun `landscape phone booster dialog rewarded dialog and network gate keep actions visible`() {
+        val reportState = OneTapBoosterState(
+            isVisible = true,
+            isRunning = false,
+            isCompleted = true,
+            currentStepIndex = 5,
+            progress = 1f,
+            steps = BoostStepId.entries.map { id ->
+                OneTapStepResult(id, BoostStepStatus.DONE, "OK", "${id.title} ok")
+            },
+            ramUsedBeforePercent = 72,
+            ramUsedAfterPercent = 50,
+            memoryPressureLabel = "MODERATE",
+            freedMb = 96,
+            trimmedApps = 4,
+            thermalLabel = "NORMAL",
+            batteryTempC = 33.8f,
+            batterySaverActive = false,
+            selectedCpuMode = CpuMode.ACCELERATION,
+            appliedProfileLabel = "Acceleration",
+            finalScore = 94,
+            finalVerdict = "PEAK GAMING READY"
+        )
+        var doneClicked = false
+        var watchClicked = false
+        var retryNetClicked = false
+
+        val activeDialog = androidx.compose.runtime.mutableIntStateOf(0)
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                when (activeDialog.intValue) {
+                    0 -> OneTapBoosterDialog(
+                        state = reportState,
+                        onReBoost = {},
+                        onOpenPowerSettings = {},
+                        onDismiss = { doneClicked = true }
+                    )
+                    1 -> RewardedAdDialog(
+                        step = RewardedAdStep.TimeGatePrompt(
+                            launchAfterReward = true,
+                            targetGameName = "Arena Legends"
+                        ),
+                        remainingTurboSeconds = 0L,
+                        adReady = true,
+                        adLoading = false,
+                        adError = null,
+                        cooldownSeconds = 0,
+                        onWatchAd = { watchClicked = true },
+                        onRetryLoad = {},
+                        onDismiss = {}
+                    )
+                    else -> NetworkGateOverlay(
+                        onOpenNetworkSettings = {},
+                        onRetryCheck = { retryNetClicked = true }
+                    )
+                }
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("one_tap_final_report_card").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("one_tap_reboost_btn").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("one_tap_done_btn").assertIsDisplayed().performClick()
+        assertTrue(doneClicked)
+
+        composeTestRule.runOnUiThread { activeDialog.intValue = 1 }
+        composeTestRule.mainClock.advanceTimeBy(150L)
+        composeTestRule.onNodeWithTag("cancel_ad_prompt_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("watch_ad_button").assertIsDisplayed().performClick()
+        assertTrue(watchClicked)
+
+        composeTestRule.runOnUiThread { activeDialog.intValue = 2 }
+        composeTestRule.mainClock.advanceTimeBy(150L)
+        composeTestRule.onNodeWithTag("open_network_settings_btn").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("retry_network_check_btn").assertIsDisplayed().performClick()
+        assertTrue(retryNetClicked)
     }
 
     private fun emptyPerformanceActions(
