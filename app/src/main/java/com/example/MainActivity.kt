@@ -24,14 +24,16 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -384,7 +386,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Persistent in-app ScreenColor, Crosshair, and Active Info HUD when panel minimized
+                    // Screen Color subtle tint when enabled outside expanded overlay
                     if (!isOverlayOpen) {
                         val tint = when (settings.screenColorMode) {
                             ScreenColorMode.DEFAULT -> Color.Transparent
@@ -394,40 +396,6 @@ class MainActivity : ComponentActivity() {
                         }
                         if (tint != Color.Transparent) {
                             Box(modifier = Modifier.fillMaxSize().background(tint))
-                        }
-                        CrosshairOverlay(style = settings.crosshairStyle)
-                        if (settings.activeInfoHud) {
-                            var hudOffsetX by remember { mutableFloatStateOf(0f) }
-                            var hudOffsetY by remember { mutableFloatStateOf(0f) }
-                            Column(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .safeDrawingPadding()
-                                    .padding(end = 16.dp, top = 62.dp)
-                                    .offset { IntOffset(hudOffsetX.roundToInt(), hudOffsetY.roundToInt()) }
-                                    .pointerInput(Unit) {
-                                        detectDragGestures { change, drag ->
-                                            change.consume()
-                                            hudOffsetX += drag.x
-                                            hudOffsetY += drag.y
-                                        }
-                                    }
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(ObsidianVoid.copy(alpha = 0.84f))
-                                    .border(1.dp, CyberBorder, RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = "${telemetry.actualFps} FPS • ${telemetry.cpuFreqMHz} MHz",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = EmeraldBright
-                                )
-                                Text(
-                                    text = "RAM ${telemetry.ramUsedPercent}% • ${telemetry.batteryTempCelsius}°C",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TextSecondary
-                                )
-                            }
                         }
                     }
 
@@ -623,49 +591,88 @@ private fun GameLaunchAnimationOverlay(
     cpuModeLabel: String,
     glowColor: Color
 ) {
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.radialGradient(
                     colors = listOf(glowColor.copy(alpha = 0.25f), ObsidianVoid)
                 )
-            ),
+            )
+            .safeDrawingPadding(),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(24.dp)
-        ) {
-            TurboCockpitReactor(
-                glowColor = glowColor,
-                animatePulse = true,
-                centerTitle = "TURBO X",
-                modifier = Modifier.size(196.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "TURBO X ENGINE ENGAGED",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontFamily = RajdhaniFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp
-                ),
-                color = glowColor
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "Launching $gameName • $cpuModeLabel",
-                style = MaterialTheme.typography.titleMedium,
-                color = TextPrimary
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Optimizing memory & touch latency...",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
-            )
+        val isLandscape = maxWidth > maxHeight
+        val reactorSize = (maxHeight * 0.56f).coerceIn(128.dp, 188.dp)
+        if (isLandscape) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(24.dp)
+            ) {
+                TurboCockpitReactor(
+                    glowColor = glowColor,
+                    animatePulse = true,
+                    centerTitle = "TURBO X",
+                    modifier = Modifier.size(reactorSize)
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "TURBO X ENGINE ENGAGED",
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontFamily = RajdhaniFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 2.sp
+                        ),
+                        color = glowColor
+                    )
+                    Text(
+                        text = "Launching $gameName • $cpuModeLabel",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Optimizing memory & touch latency...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                }
+            }
+        } else {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(24.dp)
+            ) {
+                TurboCockpitReactor(
+                    glowColor = glowColor,
+                    animatePulse = true,
+                    centerTitle = "TURBO X",
+                    modifier = Modifier.size(196.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "TURBO X ENGINE ENGAGED",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp
+                    ),
+                    color = glowColor
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Launching $gameName • $cpuModeLabel",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Optimizing memory & touch latency...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+            }
         }
     }
 }

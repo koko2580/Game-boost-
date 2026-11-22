@@ -16,16 +16,21 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -111,130 +116,234 @@ fun OneTapBoosterDialog(
 
     Dialog(
         onDismissRequest = { if (!state.isRunning) onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .safeDrawingPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .background(Color.Black.copy(alpha = 0.62f))
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.union(
+                        WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom)
+                    )
+                )
+                .padding(horizontal = 20.dp, vertical = 14.dp),
             contentAlignment = Alignment.Center
         ) {
-            val isLandscape = maxWidth >= 560.dp && maxWidth > maxHeight
-            val dialogMaxHeight = (maxHeight * 0.94f).coerceAtLeast(280.dp)
+            val isLandscape = maxWidth >= 520.dp && maxWidth > maxHeight
+            val dialogMaxHeight = (maxHeight * 0.96f).coerceAtLeast(260.dp)
 
             Column(
                 modifier = Modifier
-                    .widthIn(max = if (isLandscape) 720.dp else 520.dp)
+                    .widthIn(max = if (isLandscape) 740.dp else 520.dp)
                     .heightIn(max = dialogMaxHeight)
                     .fillMaxWidth()
                     .testTag("one_tap_booster_dialog")
-                    .clip(RoundedCornerShape(22.dp))
+                    .clip(RoundedCornerShape(if (isLandscape) 18.dp else 22.dp))
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(MidnightSurface, ObsidianVoid)
                         )
                     )
-                    .border(1.2.dp, accent.copy(alpha = 0.65f), RoundedCornerShape(22.dp))
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .border(1.2.dp, accent.copy(alpha = 0.65f), RoundedCornerShape(if (isLandscape) 18.dp else 22.dp))
+                    .padding(horizontal = if (isLandscape) 14.dp else 14.dp, vertical = if (isLandscape) 10.dp else 14.dp),
+                verticalArrangement = Arrangement.spacedBy(if (isLandscape) 8.dp else 10.dp)
             ) {
-                // Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Box(
+                if (isLandscape) {
+                    // Unified compact landscape header + percentage + slim progress bar
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(9.dp))
+                                        .background(accent.copy(alpha = 0.16f))
+                                        .border(1.dp, accent.copy(alpha = 0.7f), RoundedCornerShape(9.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.RocketLaunch,
+                                        contentDescription = null,
+                                        tint = accent,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "ONE TAP BOOSTER",
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontFamily = RajdhaniFontFamily,
+                                                fontWeight = FontWeight.Bold,
+                                                letterSpacing = 1.sp
+                                            ),
+                                            color = TextPrimary,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = if (state.isCompleted) "• 100% COMPLETE" else "• STAGE ${state.currentStepIndex + 1}/6 (${(animatedProgress * 100).toInt()}%)",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontFamily = RajdhaniFontFamily,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = if (state.isCompleted) scoreColor else accent,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Text(
+                                        text = when {
+                                            state.isRunning -> "Running 6-stage hardware optimization..."
+                                            state.isCompleted -> "Final Performance Report • ${state.finalVerdict}"
+                                            else -> "Ready to optimize"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                        color = if (state.isCompleted) scoreColor else TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = onDismiss,
+                                enabled = !state.isRunning,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("one_tap_close_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Close One Tap Booster",
+                                    tint = if (state.isRunning) TextMuted.copy(alpha = 0.4f) else TextSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        LinearProgressIndicator(
+                            progress = { animatedProgress },
+                            color = if (state.isCompleted) scoreColor else accent,
+                            trackColor = CyberSlate,
                             modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(accent.copy(alpha = 0.16f))
-                                .border(1.dp, accent.copy(alpha = 0.7f), RoundedCornerShape(12.dp)),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                        )
+                    }
+                } else {
+                    // Portrait Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(accent.copy(alpha = 0.16f))
+                                    .border(1.dp, accent.copy(alpha = 0.7f), RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.RocketLaunch,
+                                    contentDescription = null,
+                                    tint = accent,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "ONE TAP BOOSTER",
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontFamily = RajdhaniFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.1.sp
+                                    ),
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = when {
+                                        state.isRunning -> "Running 6-stage hardware optimization..."
+                                        state.isCompleted -> "Final Performance Report • ${state.finalVerdict}"
+                                        else -> "Ready to optimize"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (state.isCompleted) scoreColor else TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = onDismiss,
+                            enabled = !state.isRunning,
+                            modifier = Modifier.testTag("one_tap_close_btn")
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.RocketLaunch,
-                                contentDescription = null,
-                                tint = accent,
-                                modifier = Modifier.size(22.dp)
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "Close One Tap Booster",
+                                tint = if (state.isRunning) TextMuted.copy(alpha = 0.4f) else TextSecondary
                             )
                         }
-                        Column {
+                    }
+
+                    // Overall Progress Bar
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
                             Text(
-                                text = "ONE TAP BOOSTER",
-                                style = MaterialTheme.typography.titleLarge.copy(
+                                text = if (state.isCompleted) "OPTIMIZATION COMPLETE" else "STAGE ${state.currentStepIndex + 1} OF 6",
+                                style = MaterialTheme.typography.labelSmall.copy(
                                     fontFamily = RajdhaniFontFamily,
                                     fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.1.sp
+                                    letterSpacing = 0.8.sp
+                                ),
+                                color = accent
+                            )
+                            Text(
+                                text = "${(animatedProgress * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = RajdhaniFontFamily,
+                                    fontWeight = FontWeight.Bold
                                 ),
                                 color = TextPrimary
                             )
-                            Text(
-                                text = when {
-                                    state.isRunning -> "Running 6-stage hardware optimization..."
-                                    state.isCompleted -> "Final Performance Report • ${state.finalVerdict}"
-                                    else -> "Ready to optimize"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (state.isCompleted) scoreColor else TextSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
                         }
-                    }
-
-                    IconButton(
-                        onClick = onDismiss,
-                        enabled = !state.isRunning,
-                        modifier = Modifier.testTag("one_tap_close_btn")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = "Close One Tap Booster",
-                            tint = if (state.isRunning) TextMuted.copy(alpha = 0.4f) else TextSecondary
+                        LinearProgressIndicator(
+                            progress = { animatedProgress },
+                            color = if (state.isCompleted) scoreColor else accent,
+                            trackColor = CyberSlate,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(7.dp)
+                                .clip(RoundedCornerShape(4.dp))
                         )
                     }
-                }
-
-                // Overall Progress Bar
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = if (state.isCompleted) "OPTIMIZATION COMPLETE" else "STAGE ${state.currentStepIndex + 1} OF 6",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontFamily = RajdhaniFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.8.sp
-                            ),
-                            color = accent
-                        )
-                        Text(
-                            text = "${(animatedProgress * 100).toInt()}%",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontFamily = RajdhaniFontFamily,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = TextPrimary
-                        )
-                    }
-                    LinearProgressIndicator(
-                        progress = { animatedProgress },
-                        color = if (state.isCompleted) scoreColor else accent,
-                        trackColor = CyberSlate,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(7.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                    )
                 }
 
                 // Scrollable Body: Side-by-side in Landscape when completed, vertical otherwise
@@ -243,27 +352,28 @@ fun OneTapBoosterDialog(
                         modifier = Modifier
                             .weight(1f, fill = false)
                             .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Column(
                             modifier = Modifier
-                                .weight(0.46f)
+                                .weight(0.44f)
                                 .verticalScroll(rememberScrollState())
                         ) {
                             FinalPerformanceReportBanner(
                                 state = state,
                                 scoreColor = scoreColor,
+                                compact = true,
                                 onOpenPowerSettings = onOpenPowerSettings
                             )
                         }
                         Column(
                             modifier = Modifier
-                                .weight(0.54f)
+                                .weight(0.56f)
                                 .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             state.steps.forEach { step ->
-                                BoosterStepCard(step = step, accent = accent)
+                                BoosterStepCard(step = step, accent = accent, compact = true)
                             }
                         }
                     }
@@ -273,7 +383,7 @@ fun OneTapBoosterDialog(
                             .weight(1f, fill = false)
                             .fillMaxWidth()
                             .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalArrangement = Arrangement.spacedBy(if (isLandscape) 6.dp else 10.dp)
                     ) {
                         AnimatedVisibility(
                             visible = state.isCompleted,
@@ -283,12 +393,13 @@ fun OneTapBoosterDialog(
                             FinalPerformanceReportBanner(
                                 state = state,
                                 scoreColor = scoreColor,
+                                compact = isLandscape,
                                 onOpenPowerSettings = onOpenPowerSettings
                             )
                         }
 
                         state.steps.forEach { step ->
-                            BoosterStepCard(step = step, accent = accent)
+                            BoosterStepCard(step = step, accent = accent, compact = isLandscape)
                         }
                     }
                 }
@@ -301,16 +412,16 @@ fun OneTapBoosterDialog(
                     OutlinedButton(
                         onClick = onReBoost,
                         enabled = !state.isRunning,
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(11.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .height(if (isLandscape) 42.dp else 48.dp)
                             .testTag("one_tap_reboost_btn")
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Refresh,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(17.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("RE-BOOST", fontWeight = FontWeight.Bold)
@@ -322,10 +433,10 @@ fun OneTapBoosterDialog(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (state.isCompleted) EmeraldActive else accent
                         ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(11.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .height(if (isLandscape) 42.dp else 48.dp)
                             .testTag("one_tap_done_btn")
                     ) {
                         Text(
@@ -344,6 +455,7 @@ fun OneTapBoosterDialog(
 private fun FinalPerformanceReportBanner(
     state: OneTapBoosterState,
     scoreColor: Color,
+    compact: Boolean = false,
     onOpenPowerSettings: () -> Unit
 ) {
     Column(
@@ -353,21 +465,22 @@ private fun FinalPerformanceReportBanner(
             .clip(RoundedCornerShape(14.dp))
             .background(scoreColor.copy(alpha = 0.08f))
             .border(1.2.dp, scoreColor.copy(alpha = 0.55f), RoundedCornerShape(14.dp))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(if (compact) 9.dp else 12.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "FINAL PERFORMANCE REPORT",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
+                        letterSpacing = 0.9.sp,
+                        fontSize = if (compact) 10.sp else 11.sp
                     ),
                     color = scoreColor
                 )
@@ -375,23 +488,27 @@ private fun FinalPerformanceReportBanner(
                     text = state.finalVerdict,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontFamily = RajdhaniFontFamily,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = if (compact) 15.sp else 17.sp
                     ),
-                    color = TextPrimary
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(9.dp))
                     .background(scoreColor.copy(alpha = 0.16f))
-                    .border(1.dp, scoreColor.copy(alpha = 0.65f), RoundedCornerShape(10.dp))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .border(1.dp, scoreColor.copy(alpha = 0.65f), RoundedCornerShape(9.dp))
+                    .padding(horizontal = if (compact) 10.dp else 12.dp, vertical = if (compact) 4.dp else 6.dp)
             ) {
                 Text(
                     text = "${state.finalScore}/100",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontFamily = RajdhaniFontFamily,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = if (compact) 14.sp else 16.sp
                     ),
                     color = scoreColor
                 )
@@ -401,13 +518,14 @@ private fun FinalPerformanceReportBanner(
         // 3 Compact Summary Metric Tiles
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)
         ) {
             ReportMetricTile(
                 label = "FREED RAM",
                 value = "+${state.freedMb} MB",
                 sub = "${state.trimmedApps} apps",
                 color = EmeraldBright,
+                compact = compact,
                 modifier = Modifier.weight(1f)
             )
             ReportMetricTile(
@@ -415,6 +533,7 @@ private fun FinalPerformanceReportBanner(
                 value = state.memoryPressureLabel,
                 sub = "${state.ramUsedBeforePercent}%→${state.ramUsedAfterPercent}%",
                 color = ElectricCyan,
+                compact = compact,
                 modifier = Modifier.weight(1f)
             )
             ReportMetricTile(
@@ -422,6 +541,7 @@ private fun FinalPerformanceReportBanner(
                 value = "${state.batteryTempC}°C",
                 sub = state.thermalLabel,
                 color = if (state.thermalLabel == "NORMAL") EmeraldBright else CyberAmber,
+                compact = compact,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -438,6 +558,7 @@ private fun FinalPerformanceReportBanner(
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted
             )
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = state.appliedProfileLabel.ifBlank { state.selectedCpuMode.label },
                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
@@ -453,11 +574,11 @@ private fun FinalPerformanceReportBanner(
                     .fillMaxWidth()
                     .testTag("one_tap_power_settings_btn")
                     .minimumInteractiveComponentSize()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(9.dp))
                     .background(CrimsonTurbo.copy(alpha = 0.16f))
-                    .border(1.dp, CrimsonTurbo.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
+                    .border(1.dp, CrimsonTurbo.copy(alpha = 0.7f), RoundedCornerShape(9.dp))
                     .clickable { onOpenPowerSettings() }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 10.dp, vertical = if (compact) 7.dp else 10.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -480,6 +601,7 @@ private fun ReportMetricTile(
     value: String,
     sub: String,
     color: Color,
+    compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -487,12 +609,12 @@ private fun ReportMetricTile(
             .clip(RoundedCornerShape(10.dp))
             .background(CyberSlate.copy(alpha = 0.85f))
             .border(1.dp, CyberBorder, RoundedCornerShape(10.dp))
-            .padding(8.dp),
+            .padding(if (compact) 6.dp else 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, letterSpacing = 0.6.sp),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp, letterSpacing = 0.5.sp),
             color = TextMuted,
             maxLines = 1
         )
@@ -500,14 +622,15 @@ private fun ReportMetricTile(
             text = value,
             style = MaterialTheme.typography.titleSmall.copy(
                 fontFamily = RajdhaniFontFamily,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                fontSize = if (compact) 13.sp else 14.sp
             ),
             color = color,
             maxLines = 1
         )
         Text(
             text = sub,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
             color = TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -518,7 +641,8 @@ private fun ReportMetricTile(
 @Composable
 private fun BoosterStepCard(
     step: OneTapStepResult,
-    accent: Color
+    accent: Color,
+    compact: Boolean = false
 ) {
     val statusColor by animateColorAsState(
         targetValue = when (step.status) {
@@ -535,22 +659,22 @@ private fun BoosterStepCard(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("one_tap_step_${step.id.name}")
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(11.dp))
             .background(
                 if (step.status == BoostStepStatus.RUNNING) CyberElevated else MidnightSurface.copy(alpha = 0.88f)
             )
             .border(
                 width = 1.dp,
                 color = if (step.status == BoostStepStatus.RUNNING) accent.copy(alpha = 0.7f) else CyberBorder.copy(alpha = 0.75f),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(11.dp)
             )
-            .padding(10.dp),
+            .padding(horizontal = if (compact) 9.dp else 10.dp, vertical = if (compact) 6.dp else 10.dp),
         verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(32.dp)
+                .size(if (compact) 26.dp else 32.dp)
                 .clip(CircleShape)
                 .background(statusColor.copy(alpha = 0.14f)),
             contentAlignment = Alignment.Center
@@ -559,25 +683,25 @@ private fun BoosterStepCard(
                 BoostStepStatus.RUNNING -> CircularProgressIndicator(
                     strokeWidth = 2.dp,
                     color = accent,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(if (compact) 14.dp else 16.dp)
                 )
                 BoostStepStatus.DONE -> Icon(
                     imageVector = Icons.Rounded.CheckCircle,
                     contentDescription = "Done",
                     tint = EmeraldBright,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(if (compact) 15.dp else 18.dp)
                 )
                 BoostStepStatus.WARNING -> Icon(
                     imageVector = Icons.Rounded.Warning,
                     contentDescription = "Warning",
                     tint = CyberAmber,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(if (compact) 15.dp else 18.dp)
                 )
                 BoostStepStatus.PENDING -> Icon(
                     imageVector = stepIcon(step.id),
                     contentDescription = null,
                     tint = TextMuted,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(if (compact) 14.dp else 16.dp)
                 )
             }
         }
@@ -590,7 +714,10 @@ private fun BoosterStepCard(
             ) {
                 Text(
                     text = step.id.title,
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = if (compact) 13.sp else 14.sp
+                    ),
                     color = TextPrimary,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
@@ -604,10 +731,13 @@ private fun BoosterStepCard(
                     maxLines = 1
                 )
             }
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(if (compact) 1.dp else 2.dp))
             Text(
                 text = step.detail,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = if (compact) 11.sp else 12.sp,
+                    lineHeight = if (compact) 14.sp else 16.sp
+                ),
                 color = if (step.status == BoostStepStatus.PENDING) TextMuted else TextSecondary
             )
         }

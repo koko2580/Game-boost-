@@ -8,14 +8,20 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -79,17 +85,24 @@ fun RewardedAdDialog(
             val isCoolingDown = !adReady && !isLoadingNow && cooldownSeconds > 0
             Dialog(
                 onDismissRequest = onDismiss,
-                properties = DialogProperties(usePlatformDefaultWidth = false)
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
+                )
             ) {
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = 0.74f))
-                        .safeDrawingPadding()
-                        .padding(16.dp),
+                        .windowInsetsPadding(
+                            WindowInsets.safeDrawing.union(
+                                WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom)
+                            )
+                        )
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    val isLandscape = maxWidth >= 560.dp && maxWidth > maxHeight
+                    val isLandscape = maxWidth >= 520.dp && maxWidth > maxHeight
                     val summaryCard: @Composable () -> Unit = {
                         Column(
                             modifier = Modifier

@@ -23,15 +23,21 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -341,10 +347,15 @@ fun PermissionsScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .safeDrawingPadding()
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.union(
+                        WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom)
+                    )
+                )
         ) {
-            val isLandscape = maxWidth >= 600.dp && maxWidth > maxHeight
-            val leftPaneWidth = (maxWidth * 0.38f).coerceIn(255.dp, 340.dp)
+            val isLandscape = maxWidth >= 520.dp && maxWidth > maxHeight
+            val isCompactHeight = maxHeight < 480.dp
+            val leftPaneWidth = (maxWidth * 0.39f).coerceIn(220.dp, 340.dp)
             val missingCount = permissions.totalCount - permissions.grantedCount
             val ctaBrush = if (permissions.allGranted) {
                 Brush.horizontalGradient(listOf(EmeraldActive, EmeraldBright))
@@ -357,6 +368,7 @@ fun PermissionsScreen(
                     TurboXTopBar(
                         title = "System Permissions",
                         subtitle = "Hardware & Overlay Access",
+                        compact = isLandscape || isCompactHeight,
                         onBack = onBack,
                         backTestTag = "permissions_back_btn"
                     ) {
@@ -509,8 +521,9 @@ fun PermissionsScreen(
                             modifier = Modifier
                                 .width(leftPaneWidth)
                                 .fillMaxHeight()
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                .verticalScroll(rememberScrollState())
+                                .padding(bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             PermissionHeroCard(
                                 grantedCount = permissions.grantedCount,
@@ -518,7 +531,8 @@ fun PermissionsScreen(
                                 allGranted = permissions.allGranted,
                                 animatedProgress = animatedProgress,
                                 accent = heroAccent,
-                                items = items
+                                items = items,
+                                compact = isLandscape || isCompactHeight
                             )
                             grantActionButtons()
                         }
@@ -529,7 +543,7 @@ fun PermissionsScreen(
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .verticalScroll(rememberScrollState())
-                                .padding(bottom = 8.dp),
+                                .padding(bottom = 26.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             items.forEachIndexed { index, item ->
@@ -658,32 +672,33 @@ private fun PermissionHeroCard(
     allGranted: Boolean,
     animatedProgress: Float,
     accent: Color,
-    items: List<PermissionUiItem>
+    items: List<PermissionUiItem>,
+    compact: Boolean = false
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(if (compact) 16.dp else 20.dp))
             .background(
                 Brush.linearGradient(
                     colors = listOf(MidnightSurface, Color(0xFF101728))
                 )
             )
-            .border(1.2.dp, accent.copy(alpha = 0.55f), RoundedCornerShape(20.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .border(1.2.dp, accent.copy(alpha = 0.55f), RoundedCornerShape(if (compact) 16.dp else 20.dp))
+            .padding(if (compact) 11.dp else 16.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 9.dp else 14.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp)
         ) {
             Box(
-                modifier = Modifier.size(72.dp),
+                modifier = Modifier.size(if (compact) 54.dp else 72.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
-                    val strokeW = 6.dp.toPx()
+                    val strokeW = (if (compact) 5.dp else 6.dp).toPx()
                     val pad = strokeW / 2f
                     val arcSize = Size(size.width - strokeW, size.height - strokeW)
                     drawArc(
@@ -708,7 +723,7 @@ private fun PermissionHeroCard(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = "$grantedCount/$totalCount",
-                        style = MaterialTheme.typography.titleLarge.copy(
+                        style = (if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge).copy(
                             fontFamily = RajdhaniFontFamily,
                             fontWeight = FontWeight.Bold
                         ),
@@ -717,13 +732,14 @@ private fun PermissionHeroCard(
                 }
             }
 
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
                     text = if (allGranted) "ALL SYSTEMS ARMED" else "PERMISSIONS REQUIRED",
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.8.sp
+                        letterSpacing = 0.8.sp,
+                        fontSize = if (compact) 16.sp else 20.sp
                     ),
                     color = if (allGranted) EmeraldBright else TextPrimary
                 )
@@ -733,7 +749,10 @@ private fun PermissionHeroCard(
                     } else {
                         "Tap \"Grant All Permissions\" below to enable full in-game HUD, DND, and boost controls."
                     },
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = if (compact) 11.sp else 12.sp,
+                        lineHeight = if (compact) 14.sp else 16.sp
+                    ),
                     color = TextSecondary
                 )
             }

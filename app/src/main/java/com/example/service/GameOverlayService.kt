@@ -68,6 +68,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.MainActivity
 import com.example.R
+import com.example.TurboGameApplication
 import com.example.data.ControlPanelLayout
 import com.example.data.CpuMode
 import com.example.data.CrosshairStyle
@@ -788,9 +789,10 @@ private fun PersistentHudPassThroughLayer(
     stopwatchSeconds: Long,
     isStopwatchRunning: Boolean
 ) {
-    // Only render passive pass-through HUD elements when control panel is minimized
-    // (when expanded, GamePanelOverlayContent renders its own controls)
-    if (isExpanded) return
+    // Only render passive pass-through HUD elements when playing games outside Turbo X
+    // and while control panel is minimized (never obscure Turbo X's own Cockpit/Settings UI)
+    val ownAppInForeground by TurboGameApplication.isForegroundAppFlow.collectAsState()
+    if (isExpanded || ownAppInForeground) return
 
     val tint = when (settings.screenColorMode) {
         ScreenColorMode.DEFAULT -> Color.Transparent

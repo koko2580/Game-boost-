@@ -19,15 +19,26 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -54,7 +65,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.data.BACKGROUND_LIMIT_LABELS
 import com.example.data.CACHE_LIMIT_LABELS
 import com.example.data.CpuMode
@@ -123,44 +136,58 @@ fun SettingsScreen(
         }
     }
 
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(ObsidianVoid)
-            .safeDrawingPadding()
-    ) {
-        // Sleek Original Turbo X Top Bar
-        TurboXTopBar(
-            title = "Turbo X Settings",
-            subtitle = selectedCategory.title,
-            onBack = onBack,
-            backTestTag = "settings_back_btn"
-        ) {
-            if (statusMessage != null) {
-                Text(
-                    text = statusMessage,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = accent,
-                    maxLines = 2
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.union(
+                    WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom)
                 )
-            }
-        }
+            )
+    ) {
+        val isWide = maxWidth >= 520.dp
+        val isCompactHeight = maxHeight < 480.dp
 
-        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            val isWide = maxWidth >= 600.dp
-            val isCompactHeight = maxHeight < 480.dp
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Sleek Original Turbo X Top Bar
+            TurboXTopBar(
+                title = "Turbo X Settings",
+                subtitle = selectedCategory.title,
+                compact = isCompactHeight,
+                onBack = onBack,
+                backTestTag = "settings_back_btn"
+            ) {
+                if (statusMessage != null) {
+                    Text(
+                        text = statusMessage,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = accent,
+                        maxLines = 2
+                    )
+                }
+            }
 
             if (isWide) {
-                Row(modifier = Modifier.fillMaxSize()) {
+                val railListState = rememberLazyListState()
+                LaunchedEffect(selectedCategory) {
+                    val idx = SettingsCategory.entries.indexOf(selectedCategory)
+                    if (idx >= 0) {
+                        railListState.animateScrollToItem(idx)
+                    }
+                }
+
+                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     // Left Category Rail
-                    Column(
+                    LazyColumn(
+                        state = railListState,
+                        contentPadding = PaddingValues(bottom = if (isCompactHeight) 24.dp else 12.dp),
                         modifier = Modifier
-                            .width(if (isCompactHeight) 196.dp else 228.dp)
+                            .width(if (isCompactHeight) 168.dp else 228.dp)
                             .fillMaxHeight()
                             .background(Color(0xFF0B0F1A))
-                            .verticalScroll(rememberScrollState())
                     ) {
-                        SettingsCategory.entries.forEach { category ->
+                        itemsIndexed(SettingsCategory.entries) { _, category ->
                             val isSelected = category == selectedCategory
                             Row(
                                 modifier = Modifier
@@ -178,17 +205,23 @@ fun SettingsScreen(
                                         }
                                     )
                                     .clickable { selectedCategory = category }
-                                    .height(if (isCompactHeight) 46.dp else 54.dp),
+                                    .height(if (isCompactHeight) 36.dp else 54.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = category.title,
-                                    style = MaterialTheme.typography.bodyLarge,
+                                    style = if (isCompactHeight) {
+                                        MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp)
+                                    } else {
+                                        MaterialTheme.typography.bodyLarge
+                                    },
                                     color = if (isSelected) TextPrimary else TextSecondary,
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier
                                         .weight(1f)
-                                        .padding(horizontal = 16.dp)
+                                        .padding(horizontal = if (isCompactHeight) 12.dp else 16.dp)
                                 )
                                 if (isSelected) {
                                     Box(
@@ -209,7 +242,12 @@ fun SettingsScreen(
                             .fillMaxHeight()
                             .background(ObsidianVoid)
                             .verticalScroll(rememberScrollState(), flingBehavior = turboFling)
-                            .padding(horizontal = 24.dp, vertical = 16.dp)
+                            .padding(
+                                start = if (isCompactHeight) 18.dp else 24.dp,
+                                end = if (isCompactHeight) 18.dp else 24.dp,
+                                top = if (isCompactHeight) 10.dp else 16.dp,
+                                bottom = if (isCompactHeight) 32.dp else 24.dp
+                            )
                     ) {
                         AnimatedContent(
                             targetState = selectedCategory,
@@ -239,7 +277,7 @@ fun SettingsScreen(
                 }
             } else {
                 // Portrait Adaptive Layout: Smooth pill tabs + animated detail pane
-                Column(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -284,7 +322,7 @@ fun SettingsScreen(
                             .weight(1f)
                             .fillMaxWidth()
                             .verticalScroll(rememberScrollState(), flingBehavior = turboFling)
-                            .padding(16.dp)
+                            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 28.dp)
                     ) {
                         AnimatedContent(
                             targetState = selectedCategory,
@@ -498,7 +536,10 @@ private fun CpuSettingsSection(
         Text("Select Format", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
 
         Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier
+                .widthIn(max = 360.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             CpuFormatCard(
@@ -508,7 +549,8 @@ private fun CpuSettingsSection(
                 selected = settings.cpuUnitFormat == CpuUnitFormat.GHZ,
                 accentColor = accent,
                 onClick = { onUpdateSettings { it.copy(cpuUnitFormat = CpuUnitFormat.GHZ) } },
-                testTag = "cpu_format_ghz"
+                testTag = "cpu_format_ghz",
+                modifier = Modifier.weight(1f)
             )
             CpuFormatCard(
                 valueText = mhzText,
@@ -517,7 +559,8 @@ private fun CpuSettingsSection(
                 selected = settings.cpuUnitFormat == CpuUnitFormat.MHZ,
                 accentColor = accent,
                 onClick = { onUpdateSettings { it.copy(cpuUnitFormat = CpuUnitFormat.MHZ) } },
-                testTag = "cpu_format_mhz"
+                testTag = "cpu_format_mhz",
+                modifier = Modifier.weight(1f)
             )
         }
 
@@ -569,12 +612,12 @@ private fun CpuFormatCard(
     selected: Boolean,
     accentColor: Color,
     onClick: () -> Unit,
-    testTag: String
+    testTag: String,
+    modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .testTag(testTag)
-            .width(172.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(Color.Black)
             .border(
@@ -583,7 +626,7 @@ private fun CpuFormatCard(
                 shape = RoundedCornerShape(14.dp)
             )
             .clickable { onClick() }
-            .padding(vertical = 14.dp),
+            .padding(vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
         HolographicGaugeRing(

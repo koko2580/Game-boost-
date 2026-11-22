@@ -9,16 +9,25 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.example.ads.AdMobManager
 import com.example.ads.isRobolectricEnvironment
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
 class TurboGameApplication :
     Application(),
     DefaultLifecycleObserver,
     Application.ActivityLifecycleCallbacks {
+
+    companion object {
+        private val _isForegroundAppFlow = MutableStateFlow(false)
+        val isForegroundAppFlow = _isForegroundAppFlow.asStateFlow()
+    }
 
     lateinit var adMobManager: AdMobManager
         private set
 
     private var currentMainActivity: Activity? = null
     private var wentToBackground: Boolean = false
+    private var activeResumedCount: Int = 0
 
     override fun onCreate() {
         super<Application>.onCreate()
@@ -59,9 +68,17 @@ class TurboGameApplication :
         if (activity is MainActivity && !adMobManager.isShowingFullScreenAd) {
             currentMainActivity = activity
         }
+        activeResumedCount += 1
+        _isForegroundAppFlow.value = true
     }
 
-    override fun onActivityPaused(activity: Activity) = Unit
+    override fun onActivityPaused(activity: Activity) {
+        activeResumedCount = (activeResumedCount - 1).coerceAtLeast(0)
+        if (activeResumedCount == 0) {
+            _isForegroundAppFlow.value = false
+        }
+    }
+
     override fun onActivityStopped(activity: Activity) = Unit
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 

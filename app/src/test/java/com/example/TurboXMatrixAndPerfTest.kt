@@ -1168,6 +1168,126 @@ class TurboXMatrixAndPerfTest {
         assertTrue(retryNetClicked)
     }
 
+    @Test
+    @Config(sdk = [36], qualifiers = "w640dp-h360dp")
+    fun `compact 640dp landscape phone displays hero modes header tabs settings sliders and booster without clipping`() {
+        val sampleGame = InstalledAppInfo("com.test.compact", "Mech Arena", "4.0.2", false)
+        val freqs = listOf(1800, 1800, 2200, 2200, 2400, 2400, 2850, 3050)
+        val screenStep = androidx.compose.runtime.mutableIntStateOf(0)
+
+        val boosterState = OneTapBoosterState(
+            isVisible = true,
+            isRunning = false,
+            isCompleted = true,
+            currentStepIndex = 5,
+            progress = 1f,
+            steps = BoostStepId.entries.map { id ->
+                OneTapStepResult(id, BoostStepStatus.DONE, "OK", "${id.title} ok")
+            },
+            ramUsedBeforePercent = 74,
+            ramUsedAfterPercent = 52,
+            memoryPressureLabel = "MODERATE",
+            freedMb = 64,
+            trimmedApps = 4,
+            thermalLabel = "NORMAL",
+            batteryTempC = 36.2f,
+            batterySaverActive = false,
+            selectedCpuMode = CpuMode.BALANCED,
+            appliedProfileLabel = "Balanced",
+            finalScore = 88,
+            finalVerdict = "OPTIMIZED"
+        )
+
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                when (screenStep.intValue) {
+                    0 -> LauncherHomeScreen(
+                        settings = GameTurboSettings(
+                            addedGamePackages = setOf(sampleGame.packageName),
+                            selectedGamePackage = sampleGame.packageName
+                        ),
+                        telemetry = HardwareTelemetry(
+                            actualFps = 60,
+                            cpuFreqMHz = 1850,
+                            cpuCoreCount = 8,
+                            cpuCoreFreqsMHz = freqs,
+                            ramUsedPercent = 54
+                        ),
+                        permissions = PermissionStatus(true, true, true, true, true),
+                        addedGames = listOf(sampleGame),
+                        sessionHistory = emptyList(),
+                        remainingTurboSeconds = 3599L,
+                        statusMessage = null,
+                        isOverlayServiceRunning = false,
+                        peekAppIcon = { null },
+                        loadAppIconAsync = { null },
+                        onSelectGame = {},
+                        onStartPlay = {},
+                        onAddTurboTimeClick = {},
+                        onToggleOverlayService = {},
+                        onNavigateAddApps = {},
+                        onNavigateSettings = {},
+                        onNavigatePermissions = {},
+                        onBoostRam = {},
+                        onRunPingTest = {},
+                        onSelectCpuMode = {},
+                        onSelectWallpaperTheme = { _, _ -> },
+                        onDismissStatus = {}
+                    )
+                    1 -> SettingsScreen(
+                        settings = GameTurboSettings(),
+                        telemetry = HardwareTelemetry(actualFps = 90, cpuFreqMHz = 2400),
+                        performanceStatus = PerformanceEngineStatus(),
+                        permissions = PermissionStatus(true, true, true, true, true),
+                        securityAudit = SecurityAuditReport(),
+                        statusMessage = null,
+                        performanceActions = emptyPerformanceActions(),
+                        onUpdateSettings = {},
+                        onBoostRam = {},
+                        onClearCache = {},
+                        onSelectWallpaperTheme = { _, _ -> },
+                        onOpenPermissions = {},
+                        onDismissStatus = {},
+                        onBack = {}
+                    )
+                    else -> OneTapBoosterDialog(
+                        state = boosterState,
+                        onReBoost = {},
+                        onOpenPowerSettings = {},
+                        onDismiss = {}
+                    )
+                }
+            }
+        }
+
+        // 1. Compact landscape Cockpit: inline header tabs + all CPU mode pills visible without clipping
+        composeTestRule.mainClock.advanceTimeBy(300L)
+        composeTestRule.onNodeWithTag("tab_lobby").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("tab_database").assertIsDisplayed()
+        composeTestRule.onNodeWithText("ECO").assertIsDisplayed()
+        composeTestRule.onNodeWithText("BALANCED").assertIsDisplayed()
+        composeTestRule.onNodeWithText("TURBO").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("start_play_button").assertIsDisplayed()
+
+        // 2. Compact landscape Settings: LazyColumn rail + 2-column engine status + FPS Game slider visible
+        composeTestRule.runOnUiThread { screenStep.intValue = 1 }
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("settings_cat_PERFORMANCE").performScrollTo().assertIsDisplayed().performClick()
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithText("ACTIVE ENGINE STATUS").assertIsDisplayed()
+        composeTestRule.onNodeWithText("FPS Game").assertIsDisplayed()
+
+        // 3. Compact landscape One Tap Booster: side-by-side report + buttons displayed cleanly
+        composeTestRule.runOnUiThread { screenStep.intValue = 2 }
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("one_tap_booster_dialog").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("one_tap_final_report_card").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("one_tap_step_DEVICE_SCAN").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("one_tap_reboost_btn").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("one_tap_done_btn").assertIsDisplayed()
+    }
+
     private fun emptyPerformanceActions(
         onSetOptimizeFramePacing: (Boolean) -> Unit = {},
         onSetEnableAdpfHints: (Boolean) -> Unit = {},

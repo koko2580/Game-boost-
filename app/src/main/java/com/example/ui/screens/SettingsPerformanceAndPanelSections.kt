@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -193,82 +194,117 @@ fun PerformanceSettingsSection(
         Spacer(modifier = Modifier.height(10.dp))
 
         // Live Performance Engine Diagnostics Card
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
                 .background(MidnightSurface)
                 .border(1.dp, accent.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            Row(
+            val useTwoColumns = maxWidth >= 380.dp
+            val statLines = listOf(
+                Triple(
+                    "Display & FPS",
+                    "${engineStatus.appliedDisplayModeHz}Hz mode • ${telemetry.actualFps} FPS (Max ${panelMaxHz}Hz)",
+                    EmeraldBright
+                ),
+                Triple(
+                    "CPU Boost",
+                    buildString {
+                        append(if (engineStatus.adpfHintActive) "ADPF (${String.format(Locale.US, "%.1f", engineStatus.adpfTargetDurationMs)}ms)" else "Thread Priority")
+                        if (engineStatus.gameStateActive) append(" • GameState")
+                    },
+                    if (engineStatus.adpfHintActive || engineStatus.threadPriorityBoosted) ElectricCyan else TextSecondary
+                ),
+                Triple(
+                    "GPU Pipeline",
+                    "${engineStatus.activeGpuPipelineLabel} • ${engineStatus.gpuInfo.rendererName}",
+                    TextPrimary
+                ),
+                Triple(
+                    "Touch & Scroll",
+                    "${if (engineStatus.unbufferedTouchActive) "Unbuffered ON" else "Standard"} • x${String.format(Locale.US, "%.2f", engineStatus.scrollMultiplier * engineStatus.frictionFactor)}",
+                    if (engineStatus.unbufferedTouchActive) EmeraldBright else TextSecondary
+                ),
+                Triple(
+                    "Frame Pacing",
+                    "${if (engineStatus.framePacingActive) "ON (${String.format(Locale.US, "%.2f", engineStatus.framePacingJitterMs)}ms)" else "OFF"} • ${engineStatus.currentResolutionLabel}",
+                    if (engineStatus.framePacingActive) ElectricCyan else TextSecondary
+                ),
+                Triple(
+                    "Power & Mode",
+                    buildString {
+                        append(if (engineStatus.batterySaverActive) "Battery Saver ON!" else "Saver OFF")
+                        if (engineStatus.sustainedPerformanceActive) append(" • Sustained")
+                        if (engineStatus.autoPerfActive) append(" • Auto")
+                    },
+                    if (engineStatus.batterySaverActive) CyberAmber else EmeraldBright
+                )
+            )
+
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(if (useTwoColumns) 4.dp else 6.dp)
             ) {
-                Text(
-                    text = "ACTIVE ENGINE STATUS",
-                    style = MaterialTheme.typography.labelLarge.copy(fontFamily = RajdhaniFontFamily),
-                    color = accent
-                )
-                Text(
-                    text = "Thermal: ${engineStatus.thermalStatusLabel}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (engineStatus.thermalStatusLabel == "NORMAL") EmeraldBright else CyberAmber
-                )
-            }
-            EngineStatLine(
-                label = "Display & FPS",
-                value = "${engineStatus.appliedDisplayModeHz}Hz mode • ${telemetry.actualFps} FPS live (Max ${panelMaxHz}Hz)",
-                valueColor = EmeraldBright
-            )
-            EngineStatLine(
-                label = "CPU Boost Engine",
-                value = buildString {
-                    append(if (engineStatus.adpfHintActive) "ADPF Hint (${String.format(Locale.US, "%.1f", engineStatus.adpfTargetDurationMs)}ms)" else "Thread Priority")
-                    if (engineStatus.gameStateActive) append(" • GameState")
-                },
-                valueColor = if (engineStatus.adpfHintActive || engineStatus.threadPriorityBoosted) ElectricCyan else TextSecondary
-            )
-            EngineStatLine(
-                label = "GPU Pipeline",
-                value = "${engineStatus.activeGpuPipelineLabel} • ${engineStatus.gpuInfo.rendererName}",
-                valueColor = TextPrimary
-            )
-            EngineStatLine(
-                label = "Touch & Scroll",
-                value = "${if (engineStatus.unbufferedTouchActive) "Unbuffered Dispatch ON" else "Standard Dispatch"} • Glide x${String.format(Locale.US, "%.2f", engineStatus.scrollMultiplier * engineStatus.frictionFactor)}",
-                valueColor = if (engineStatus.unbufferedTouchActive) EmeraldBright else TextSecondary
-            )
-            EngineStatLine(
-                label = "Frame Pacing & Panel",
-                value = "${if (engineStatus.framePacingActive) "Pacing ON (${String.format(Locale.US, "%.2f", engineStatus.framePacingJitterMs)}ms)" else "Pacing OFF"} • ${engineStatus.currentResolutionLabel}",
-                valueColor = if (engineStatus.framePacingActive) ElectricCyan else TextSecondary
-            )
-            EngineStatLine(
-                label = "Power & Thermal Mode",
-                value = buildString {
-                    append(if (engineStatus.batterySaverActive) "Battery Saver ON!" else "Saver OFF")
-                    if (engineStatus.sustainedPerformanceActive) append(" • Sustained")
-                    if (engineStatus.autoPerfActive) append(" • Auto")
-                },
-                valueColor = if (engineStatus.batterySaverActive) CyberAmber else EmeraldBright
-            )
-            if (!permissions.writeSettingsGranted) {
-                Text(
-                    text = "Tip: Grant 'Modify System Settings' to sync system pointer speed (${engineStatus.appliedPointerSpeed}). Tap here ->",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = CyberAmber,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable { actions.onOpenPermissions() }
-                        .padding(vertical = 4.dp)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ACTIVE ENGINE STATUS",
+                        style = MaterialTheme.typography.labelLarge.copy(fontFamily = RajdhaniFontFamily),
+                        color = accent
+                    )
+                    Text(
+                        text = "Thermal: ${engineStatus.thermalStatusLabel}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (engineStatus.thermalStatusLabel == "NORMAL") EmeraldBright else CyberAmber
+                    )
+                }
+
+                if (useTwoColumns) {
+                    statLines.chunked(2).forEach { pair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            pair.forEach { (lbl, valText, valColor) ->
+                                EngineStatTile(
+                                    label = lbl,
+                                    value = valText,
+                                    valueColor = valColor,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    statLines.forEach { (lbl, valText, valColor) ->
+                        EngineStatLine(
+                            label = lbl,
+                            value = valText,
+                            valueColor = valColor
+                        )
+                    }
+                }
+
+                if (!permissions.writeSettingsGranted) {
+                    Text(
+                        text = "Tip: Grant 'Modify System Settings' to sync system pointer speed (${engineStatus.appliedPointerSpeed}). Tap here ->",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CyberAmber,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { actions.onOpenPermissions() }
+                            .padding(vertical = 3.dp)
+                    )
+                }
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         HorizontalDivider(color = CyberBorder.copy(alpha = 0.5f))
 
         // FPS Game Slider
@@ -423,6 +459,39 @@ fun PerformanceSettingsSection(
 }
 
 @Composable
+private fun EngineStatTile(
+    label: String,
+    value: String,
+    valueColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(7.dp))
+            .background(CyberElevated.copy(alpha = 0.55f))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+            color = TextMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold
+            ),
+            color = valueColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 private fun EngineStatLine(
     label: String,
     value: String,
@@ -463,7 +532,7 @@ fun DiscreteSliderRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 10.dp)
+            .padding(vertical = 6.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -576,7 +645,7 @@ private fun ControlLayoutPreviewCard(
     Box(
         modifier = modifier
             .testTag("control_layout_${layout.name}")
-            .height(146.dp)
+            .height(128.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(Color(0xFF1D202C))
             .border(
@@ -747,7 +816,7 @@ private fun GamePanelStyleCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(118.dp)
+                .height(98.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFF070910))
                 .padding(6.dp)

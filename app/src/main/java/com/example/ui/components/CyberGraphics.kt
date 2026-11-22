@@ -163,6 +163,7 @@ fun TurboXLogoMark(
 fun TurboXTopBar(
     title: String,
     subtitle: String? = null,
+    compact: Boolean = false,
     onBack: () -> Unit,
     backTestTag: String,
     trailingContent: @Composable RowScope.() -> Unit = {}
@@ -176,7 +177,7 @@ fun TurboXTopBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp)
+                .height(if (compact) 46.dp else 60.dp)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -200,13 +201,13 @@ fun TurboXTopBar(
                 Spacer(modifier = Modifier.width(4.dp))
                 TurboXLogoMark(
                     accentColor = accent,
-                    modifier = Modifier.size(30.dp)
+                    modifier = Modifier.size(if (compact) 25.dp else 30.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.titleLarge.copy(
+                        style = (if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge).copy(
                             fontFamily = RajdhaniFontFamily,
                             fontWeight = FontWeight.Bold
                         ),

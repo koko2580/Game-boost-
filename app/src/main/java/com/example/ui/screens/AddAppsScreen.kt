@@ -11,12 +11,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -86,14 +92,20 @@ fun AddAppsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(ObsidianVoid)
-            .safeDrawingPadding()
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.union(
+                    WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom)
+                )
+            )
     ) {
-        val isWide = maxWidth >= 600.dp
+        val isWide = maxWidth >= 520.dp
+        val isCompactHeight = maxHeight < 480.dp
 
         Column(modifier = Modifier.fillMaxSize()) {
             TurboXTopBar(
                 title = "Game Library",
                 subtitle = "${addedPackages.size} Selected for Turbo X",
+                compact = isCompactHeight,
                 onBack = onBack,
                 backTestTag = "add_apps_back_btn"
             ) {
@@ -122,7 +134,7 @@ fun AddAppsScreen(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp, vertical = if (isCompactHeight) 4.dp else 8.dp)
                     .testTag("add_apps_search")
             )
 
@@ -140,9 +152,14 @@ fun AddAppsScreen(
                 }
             } else {
                 LazyVerticalGrid(
-                    columns = if (isWide) GridCells.Adaptive(minSize = 310.dp) else GridCells.Fixed(1),
+                    columns = if (isWide) GridCells.Adaptive(minSize = 250.dp) else GridCells.Fixed(1),
                     flingBehavior = rememberTurboFlingBehavior(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 6.dp,
+                        bottom = if (isCompactHeight) 28.dp else 12.dp
+                    ),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier
