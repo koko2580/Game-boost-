@@ -49,6 +49,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import com.example.BuildConfig
 import androidx.compose.runtime.LaunchedEffect
@@ -296,6 +297,7 @@ fun SettingsScreen(
                             Box(
                                 modifier = Modifier
                                     .testTag("settings_cat_${category.name}")
+                                    .minimumInteractiveComponentSize()
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(pillBg)
                                     .border(
@@ -304,14 +306,16 @@ fun SettingsScreen(
                                         RoundedCornerShape(12.dp)
                                     )
                                     .clickable { selectedCategory = category }
-                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = category.title,
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                                     ),
-                                    color = if (isSelected) Color.White else TextSecondary
+                                    color = if (isSelected) Color.White else TextSecondary,
+                                    maxLines = 1
                                 )
                             }
                         }
@@ -875,9 +879,22 @@ private fun InfoRow(label: String, value: String) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-        Text(value, style = MaterialTheme.typography.bodyMedium, color = TextPrimary, fontWeight = FontWeight.Medium)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary,
+            modifier = Modifier.padding(end = 12.dp)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextPrimary,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
+        )
     }
 }

@@ -2,17 +2,17 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Core Aerospace Obsidian & Graphite Stealth Palette (Original Turbo X)
-val ObsidianVoid = Color(0xFF06080F)
-val MidnightSurface = Color(0xFF0E1320)
-val CyberSlate = Color(0xFF151C2E)
-val CyberElevated = Color(0xFF1D263C)
+// Core Aerospace Black, Dark Navy & Crimson Stealth Palette (Original Turbo X)
+val ObsidianVoid = Color(0xFF05070E)
+val MidnightSurface = Color(0xFF0B101D)
+val CyberSlate = Color(0xFF131A2C)
+val CyberElevated = Color(0xFF1B2338)
 val CyberBorder = Color(0xFF28344E)
 
-// Signature Turbo X Accents
-val CrimsonTurbo = Color(0xFFFF3355)
-val CrimsonBright = Color(0xFFFF5C7A)
-val CrimsonDeep = Color(0xFFA81232)
+// Signature Turbo X Crimson & Deep Red Accents
+val CrimsonTurbo = Color(0xFFFF1744)
+val CrimsonBright = Color(0xFFFF4D6D)
+val CrimsonDeep = Color(0xFF9E0B22)
 
 val CyberAmber = Color(0xFFFFB300)
 val CyberAmberDeep = Color(0xFF996600)

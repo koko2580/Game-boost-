@@ -280,7 +280,30 @@ fun GamePanelOverlayContent(
                     statusMessage = statusMessage,
                     leftTools = leftTools,
                     rightTiles = rightTiles,
-                    callbacks = callbacks
+                    callbacks = callbacks,
+                    primaryAccent = Color(0xFFFF1744),
+                    deepAccent = Color(0xFF9E0B22),
+                    rootTag = "overlay_rog_root"
+                )
+            }
+            GamePanelStyle.NEW -> {
+                RogArmouryOverlayContent(
+                    isWideLandscape = isWideLandscape,
+                    settings = settings,
+                    telemetry = telemetry,
+                    cpuDisplayValue = cpuDisplayValue,
+                    cpuDisplayUnit = cpuDisplayUnit,
+                    brightnessFraction = brightnessFraction,
+                    volumeFraction = volumeFraction,
+                    stopwatchSeconds = stopwatchSeconds,
+                    isStopwatchRunning = isStopwatchRunning,
+                    statusMessage = statusMessage,
+                    leftTools = leftTools,
+                    rightTiles = rightTiles,
+                    callbacks = callbacks,
+                    primaryAccent = palette.accent,
+                    deepAccent = palette.accentDeep,
+                    rootTag = "overlay_new_root"
                 )
             }
             GamePanelStyle.XIAOMI_STYLE -> {
@@ -317,7 +340,7 @@ fun GamePanelOverlayContent(
                     callbacks = callbacks
                 )
             }
-            GamePanelStyle.CLASSIC, GamePanelStyle.NEW -> {
+            GamePanelStyle.CLASSIC -> {
                 CyberWingHalfOverlayContent(
                     isWideLandscape = isWideLandscape,
                     isClassic = isClassic,

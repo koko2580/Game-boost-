@@ -270,6 +270,142 @@ internal fun EsportsHalfDockShell(
     }
 }
 
+internal fun rogWingDeckPath(width: Float, height: Float, isLandscape: Boolean): Path {
+    val shoulderInsetX = if (isLandscape) width * 0.25f else width * 0.14f
+    val topBevel = if (isLandscape) (height * 0.12f).coerceIn(8f, 18f) else (height * 0.04f).coerceIn(6f, 14f)
+    val sideCut = if (isLandscape) (height * 0.17f).coerceIn(12f, 24f) else (height * 0.055f).coerceIn(8f, 16f)
+    val bottomCut = (height * 0.10f).coerceIn(8f, 16f)
+    return Path().apply {
+        moveTo(sideCut, topBevel)
+        lineTo((shoulderInsetX - sideCut * 0.65f).coerceAtLeast(sideCut), topBevel)
+        lineTo(shoulderInsetX, 0f)
+        lineTo(width - shoulderInsetX, 0f)
+        lineTo((width - shoulderInsetX + sideCut * 0.65f).coerceAtMost(width - sideCut), topBevel)
+        lineTo(width - sideCut, topBevel)
+        lineTo(width, topBevel + sideCut)
+        lineTo(width, height - bottomCut)
+        lineTo(width - bottomCut, height)
+        lineTo(bottomCut, height)
+        lineTo(0f, height - bottomCut)
+        lineTo(0f, topBevel + sideCut)
+        close()
+    }
+}
+
+/**
+ * Bottom-docked ROG Game Genie-inspired cockpit wrapper.
+ * Anchors cleanly at BottomCenter so the upper battlefield remains completely unobstructed,
+ * with smooth spring slide-up + fade entrance, scrim tap-to-dismiss, and swipe-down collapse.
+ */
+@Composable
+internal fun RogBottomCockpitShell(
+    isWideLandscape: Boolean,
+    lowRamOverlayMode: Boolean,
+    rootTag: String,
+    onDismissToHandle: () -> Unit,
+    modifier: Modifier = Modifier,
+    panelContent: @Composable BoxScope.(panelWidth: Dp, maxPanelHeight: Dp) -> Unit
+) {
+    val entrance = remember(rootTag, lowRamOverlayMode) {
+        Animatable(if (lowRamOverlayMode) 1f else 0f)
+    }
+    LaunchedEffect(rootTag, lowRamOverlayMode) {
+        if (lowRamOverlayMode) {
+            entrance.snapTo(1f)
+        } else {
+            entrance.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(dampingRatio = 0.80f, stiffness = Spring.StiffnessMediumLow)
+            )
+        }
+    }
+
+    val scrimInteraction = remember { MutableInteractionSource() }
+    val panelClickShield = remember { MutableInteractionSource() }
+    var dragAccumY by remember { mutableFloatStateOf(0f) }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .testTag(rootTag)
+            .fillMaxSize()
+    ) {
+        // Lightweight scrim keeps the actual game visible behind the panel; tap outside to hide
+        Box(
+            modifier = Modifier
+                .testTag("overlay_backdrop_scrim")
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.08f),
+                            Color.Black.copy(alpha = 0.24f),
+                            Color.Black.copy(alpha = 0.42f)
+                        )
+                    )
+                )
+                .clickable(
+                    interactionSource = scrimInteraction,
+                    indication = null,
+                    onClick = onDismissToHandle
+                )
+        )
+
+        val targetWidth = if (isWideLandscape) {
+            (maxWidth * 0.91f).coerceIn(500.dp, 820.dp)
+        } else {
+            (maxWidth - 14.dp).coerceAtMost(450.dp)
+        }
+        val maxPanelHeight = if (isWideLandscape) {
+            (maxHeight * 0.52f).coerceIn(168.dp, 214.dp)
+        } else {
+            (maxHeight * 0.54f).coerceIn(296.dp, 450.dp)
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .padding(
+                    horizontal = if (isWideLandscape) 10.dp else 7.dp,
+                    vertical = if (isWideLandscape) 4.dp else 8.dp
+                ),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Box(
+                modifier = Modifier
+                    .testTag("overlay_dock_panel")
+                    .width(targetWidth)
+                    .heightIn(max = maxPanelHeight)
+                    .graphicsLayer {
+                        val t = entrance.value.coerceIn(0f, 1f)
+                        alpha = 0.25f + (0.75f * t)
+                        translationY = 140f * (1f - t)
+                    }
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = { dragAccumY = 0f },
+                            onDragCancel = { dragAccumY = 0f }
+                        ) { change, dragAmount ->
+                            dragAccumY += dragAmount
+                            if (dragAccumY > 85f) {
+                                change.consume()
+                                dragAccumY = 0f
+                                onDismissToHandle()
+                            }
+                        }
+                    }
+                    .clickable(
+                        interactionSource = panelClickShield,
+                        indication = null,
+                        onClick = {}
+                    )
+            ) {
+                panelContent(targetWidth, maxPanelHeight)
+            }
+        }
+    }
+}
+
 @Composable
 internal fun EsportsCollapseChip(
     label: String,

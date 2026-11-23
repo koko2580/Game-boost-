@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -219,7 +220,7 @@ class MainActivity : ComponentActivity() {
                 requestedOrientation = if (settings.rotationLock) {
                     ActivityInfo.SCREEN_ORIENTATION_LOCKED
                 } else {
-                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 }
             }
             LaunchedEffect(settings.lockBrightness, brightness) {
@@ -604,6 +605,7 @@ private fun GameLaunchAnimationOverlay(
     ) {
         val isLandscape = maxWidth > maxHeight
         val reactorSize = (maxHeight * 0.56f).coerceIn(128.dp, 188.dp)
+        val portraitReactorSize = (maxWidth * 0.48f).coerceIn(148.dp, 196.dp)
         if (isLandscape) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
@@ -642,13 +644,15 @@ private fun GameLaunchAnimationOverlay(
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
-                modifier = Modifier.padding(24.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
             ) {
                 TurboCockpitReactor(
                     glowColor = glowColor,
                     animatePulse = true,
                     centerTitle = "TURBO X",
-                    modifier = Modifier.size(196.dp)
+                    modifier = Modifier.size(portraitReactorSize)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(

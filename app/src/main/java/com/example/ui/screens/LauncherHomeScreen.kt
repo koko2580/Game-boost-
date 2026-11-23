@@ -53,6 +53,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -284,6 +285,7 @@ fun LauncherHomeScreen(
                 )
         ) {
             val isWide = maxWidth >= 520.dp
+            val isNarrowPortrait = maxWidth < 395.dp
             val isCompactHeight = maxHeight < 500.dp
             val inlineHeaderTabs = isWide && isCompactHeight
             val showHeaderClock = maxWidth >= 740.dp || !inlineHeaderTabs
@@ -414,13 +416,12 @@ fun LauncherHomeScreen(
                     }
                 }
 
-                // Compact Status Strip for Portrait Phones
+                // Balanced Status Strip for Portrait Phones
                 if (!isWide) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         HeaderStatusCluster(
@@ -428,6 +429,7 @@ fun LauncherHomeScreen(
                             telemetry = telemetry,
                             remainingTurboSeconds = remainingTurboSeconds,
                             accentColor = palette.accent,
+                            fillWidth = true,
                             onAddTimeClick = onAddTurboTimeClick
                         )
                     }
@@ -547,7 +549,8 @@ fun LauncherHomeScreen(
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .fillMaxWidth(),
+                                            .fillMaxWidth()
+                                            .verticalScroll(rememberScrollState()),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         CockpitHeroCard(
@@ -557,6 +560,7 @@ fun LauncherHomeScreen(
                                             telemetry = telemetry,
                                             glowColor = modeGlowColor,
                                             secondaryColor = palette.secondaryGlow,
+                                            narrowPortrait = isNarrowPortrait,
                                             onSelectCpuMode = onSelectCpuMode,
                                             onBoostRam = onBoostRam,
                                             onRunPingTest = onRunPingTest,
@@ -775,6 +779,7 @@ private fun CockpitHeroCard(
     glowColor: Color,
     secondaryColor: Color,
     compact: Boolean = false,
+    narrowPortrait: Boolean = false,
     onSelectCpuMode: (CpuMode) -> Unit,
     onBoostRam: () -> Unit,
     onRunPingTest: () -> Unit,
@@ -799,27 +804,33 @@ private fun CockpitHeroCard(
         label = "hero_ram_bar"
     )
 
+    val heroShape = CutCornerShape(
+        topStart = if (compact) 14.dp else 20.dp,
+        bottomEnd = if (compact) 14.dp else 20.dp,
+        topEnd = if (compact) 6.dp else 8.dp,
+        bottomStart = if (compact) 6.dp else 8.dp
+    )
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(if (compact) 18.dp else 24.dp))
+            .clip(heroShape)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        MidnightSurface.copy(alpha = 0.96f),
-                        Color(0xFF090D18)
+                        Color(0xF00B101D),
+                        Color(0xF6070A14)
                     )
                 )
             )
             .border(
-                width = 1.dp,
+                width = 1.2.dp,
                 brush = Brush.linearGradient(
                     colors = listOf(
-                        animatedAccent.copy(alpha = 0.55f),
-                        CyberBorder.copy(alpha = 0.7f),
-                        secondaryColor.copy(alpha = 0.35f)
+                        animatedAccent.copy(alpha = 0.72f),
+                        CyberBorder.copy(alpha = 0.75f),
+                        secondaryColor.copy(alpha = 0.48f)
                     )
                 ),
-                shape = RoundedCornerShape(if (compact) 18.dp else 24.dp)
+                shape = heroShape
             )
             .padding(
                 horizontal = if (compact) 12.dp else 16.dp,
@@ -900,15 +911,20 @@ private fun CockpitHeroCard(
             Spacer(modifier = Modifier.width(8.dp))
 
             // One Tap Booster Pill
+            val oneTapShape = CutCornerShape(topStart = 9.dp, bottomEnd = 9.dp, topEnd = 3.dp, bottomStart = 3.dp)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
                 modifier = Modifier
                     .testTag("hero_quick_boost_btn")
                     .height(if (compact) 32.dp else 48.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(animatedAccent.copy(alpha = 0.16f))
-                    .border(1.dp, animatedAccent.copy(alpha = 0.65f), RoundedCornerShape(10.dp))
+                    .clip(oneTapShape)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(animatedAccent.copy(alpha = 0.24f), animatedAccent.copy(alpha = 0.12f))
+                        )
+                    )
+                    .border(1.1.dp, animatedAccent.copy(alpha = 0.8f), oneTapShape)
                     .clickable { onBoostRam() }
                     .padding(horizontal = if (compact) 10.dp else 12.dp)
             ) {
@@ -951,7 +967,13 @@ private fun CockpitHeroCard(
                 cpuFreqMHz = telemetry.cpuFreqMHz,
                 ramUsedPercent = telemetry.ramUsedPercent,
                 animatePulse = settings.homeAnimation,
-                modifier = Modifier.size(if (compact) 76.dp else 144.dp)
+                modifier = Modifier.size(
+                    when {
+                        compact -> 76.dp
+                        narrowPortrait -> 124.dp
+                        else -> 144.dp
+                    }
+                )
             )
 
             Column(
@@ -1147,6 +1169,7 @@ private fun HeaderStatusCluster(
     accentColor: Color,
     compact: Boolean = false,
     showClock: Boolean = true,
+    fillWidth: Boolean = false,
     onAddTimeClick: () -> Unit
 ) {
     val hasTime = remainingTurboSeconds > 0L
@@ -1158,88 +1181,103 @@ private fun HeaderStatusCluster(
     val formattedRemaining = formatCompactTurboClock(remainingTurboSeconds)
 
     Row(
+        modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 8.dp)
+        horizontalArrangement = if (fillWidth) {
+            Arrangement.SpaceBetween
+        } else {
+            Arrangement.spacedBy(if (compact) 5.dp else 8.dp)
+        }
     ) {
-        if (showClock) {
-            Text(
-                text = clock,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontFamily = RajdhaniFontFamily,
-                    fontSize = if (compact) 14.sp else 16.sp
-                ),
-                color = TextSecondary
-            )
-        }
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(CyberSlate.copy(alpha = 0.7f))
-                .padding(horizontal = if (compact) 6.dp else 7.dp, vertical = 3.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 8.dp)
         ) {
-            Icon(
-                imageVector = if (telemetry.isCharging) Icons.Rounded.BatteryChargingFull else Icons.Rounded.BatteryStd,
-                contentDescription = "Battery level",
-                tint = EmeraldActive,
-                modifier = Modifier.size(13.dp)
-            )
-            Text(
-                text = "${telemetry.batteryPercent}%",
-                style = MaterialTheme.typography.labelSmall,
-                color = TextSecondary
-            )
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier
-                .testTag("turbo_time_badge")
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (hasTime) EmeraldActive.copy(alpha = 0.14f) else accentColor.copy(alpha = 0.14f))
-                .border(
-                    1.dp,
-                    if (hasTime) EmeraldActive.copy(alpha = 0.55f) else CyberAmber.copy(alpha = 0.55f),
-                    RoundedCornerShape(10.dp)
+            if (showClock) {
+                Text(
+                    text = clock,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        fontSize = if (compact) 14.sp else 16.sp
+                    ),
+                    color = TextSecondary
                 )
-                .clickable { onAddTimeClick() }
-                .padding(horizontal = if (compact) 7.dp else 9.dp, vertical = if (compact) 4.dp else 5.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Bolt,
-                contentDescription = "Remaining Turbo Time",
-                tint = timeColor,
-                modifier = Modifier.size(14.dp)
-            )
-            Text(
-                text = formattedRemaining,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = RajdhaniFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = if (compact) 13.sp else 14.sp
-                ),
-                color = timeColor,
-                maxLines = 1
-            )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(CyberSlate.copy(alpha = 0.7f))
+                    .padding(horizontal = if (compact) 6.dp else 7.dp, vertical = 3.dp)
+            ) {
+                Icon(
+                    imageVector = if (telemetry.isCharging) Icons.Rounded.BatteryChargingFull else Icons.Rounded.BatteryStd,
+                    contentDescription = "Battery level",
+                    tint = EmeraldActive,
+                    modifier = Modifier.size(13.dp)
+                )
+                Text(
+                    text = "${telemetry.batteryPercent}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary
+                )
+            }
         }
-        Box(
-            modifier = Modifier
-                .testTag("header_add_time_btn")
-                .minimumInteractiveComponentSize()
-                .size(if (compact) 32.dp else 40.dp)
-                .clip(CircleShape)
-                .background(CyberElevated)
-                .border(1.dp, if (hasTime) CyberBorder else CyberAmber, CircleShape)
-                .clickable { onAddTimeClick() },
-            contentAlignment = Alignment.Center
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 8.dp)
         ) {
-            Icon(
-                Icons.Rounded.Add,
-                contentDescription = "Watch ad to add 1 hour Turbo Time",
-                tint = if (hasTime) TextPrimary else CyberAmber,
-                modifier = Modifier.size(16.dp)
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .testTag("turbo_time_badge")
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (hasTime) EmeraldActive.copy(alpha = 0.14f) else accentColor.copy(alpha = 0.14f))
+                    .border(
+                        1.dp,
+                        if (hasTime) EmeraldActive.copy(alpha = 0.55f) else CyberAmber.copy(alpha = 0.55f),
+                        RoundedCornerShape(10.dp)
+                    )
+                    .clickable { onAddTimeClick() }
+                    .padding(horizontal = if (compact) 7.dp else 9.dp, vertical = if (compact) 4.dp else 5.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Bolt,
+                    contentDescription = "Remaining Turbo Time",
+                    tint = timeColor,
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(
+                    text = formattedRemaining,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = if (compact) 13.sp else 14.sp
+                    ),
+                    color = timeColor,
+                    maxLines = 1
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .testTag("header_add_time_btn")
+                    .minimumInteractiveComponentSize()
+                    .size(if (compact) 32.dp else 40.dp)
+                    .clip(CircleShape)
+                    .background(CyberElevated)
+                    .border(1.dp, if (hasTime) CyberBorder else CyberAmber, CircleShape)
+                    .clickable { onAddTimeClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Add,
+                    contentDescription = "Watch ad to add 1 hour Turbo Time",
+                    tint = if (hasTime) TextPrimary else CyberAmber,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 }
@@ -1692,41 +1730,41 @@ private fun TelemetryPageContent(
             ),
         verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 8.dp else 12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            TelemetrySummaryCard(
-                title = "CPU & Live FPS",
-                value = "${telemetry.cpuFreqMHz} MHz",
-                subtitle = "${telemetry.actualFps} FPS (${String.format(Locale.US, "%.1f", telemetry.frameTimeMs)}ms) • ${telemetry.cpuCoreCount} Cores",
-                icon = Icons.Rounded.Speed,
-                accent = palette.accent,
-                compact = isCompactHeight,
-                modifier = Modifier.weight(1f)
-            )
-            TelemetrySummaryCard(
-                title = "Memory (RAM)",
-                value = "${telemetry.ramUsedPercent}%",
-                subtitle = "${telemetry.ramAvailableMb} / ${telemetry.ramTotalMb} MB Free",
-                icon = Icons.Rounded.Memory,
-                accent = ElectricCyan,
-                compact = isCompactHeight,
-                modifier = Modifier.weight(1f)
-            )
-            TelemetrySummaryCard(
-                title = "Thermal & Net",
-                value = "${telemetry.batteryTempCelsius}°C",
-                subtitle = "${telemetry.displayRefreshRateHz}Hz • ${telemetry.networkType}" +
-                    (telemetry.wifiLinkMbps?.let { " ${it}Mbps" } ?: ""),
-                icon = Icons.Rounded.Thermostat,
-                accent = CyberAmber,
-                compact = isCompactHeight,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
         if (isWide) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                TelemetrySummaryCard(
+                    title = "CPU & Live FPS",
+                    value = "${telemetry.cpuFreqMHz} MHz",
+                    subtitle = "${telemetry.actualFps} FPS (${String.format(Locale.US, "%.1f", telemetry.frameTimeMs)}ms) • ${telemetry.cpuCoreCount} Cores",
+                    icon = Icons.Rounded.Speed,
+                    accent = palette.accent,
+                    compact = isCompactHeight,
+                    modifier = Modifier.weight(1f)
+                )
+                TelemetrySummaryCard(
+                    title = "Memory (RAM)",
+                    value = "${telemetry.ramUsedPercent}%",
+                    subtitle = "${telemetry.ramAvailableMb} / ${telemetry.ramTotalMb} MB Free",
+                    icon = Icons.Rounded.Memory,
+                    accent = ElectricCyan,
+                    compact = isCompactHeight,
+                    modifier = Modifier.weight(1f)
+                )
+                TelemetrySummaryCard(
+                    title = "Thermal & Net",
+                    value = "${telemetry.batteryTempCelsius}°C",
+                    subtitle = "${telemetry.displayRefreshRateHz}Hz • ${telemetry.networkType}" +
+                        (telemetry.wifiLinkMbps?.let { " ${it}Mbps" } ?: ""),
+                    icon = Icons.Rounded.Thermostat,
+                    accent = CyberAmber,
+                    compact = isCompactHeight,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1753,6 +1791,7 @@ private fun TelemetryPageContent(
                         settings = settings,
                         telemetry = telemetry,
                         isOverlayRunning = isOverlayRunning,
+                        isWide = true,
                         accentColor = palette.accent,
                         onBoostRam = onBoostRam,
                         onRunPingTest = onRunPingTest,
@@ -1762,6 +1801,41 @@ private fun TelemetryPageContent(
                 }
             }
         } else {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    TelemetrySummaryCard(
+                        title = "CPU & Live FPS",
+                        value = "${telemetry.cpuFreqMHz} MHz",
+                        subtitle = "${telemetry.actualFps} FPS • ${telemetry.cpuCoreCount} Cores",
+                        icon = Icons.Rounded.Speed,
+                        accent = palette.accent,
+                        compact = false,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TelemetrySummaryCard(
+                        title = "Memory (RAM)",
+                        value = "${telemetry.ramUsedPercent}%",
+                        subtitle = "${telemetry.ramAvailableMb} / ${telemetry.ramTotalMb} MB Free",
+                        icon = Icons.Rounded.Memory,
+                        accent = ElectricCyan,
+                        compact = false,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                TelemetrySummaryCard(
+                    title = "Thermal & Network",
+                    value = "${telemetry.batteryTempCelsius}°C • ${telemetry.networkType}",
+                    subtitle = "${telemetry.displayRefreshRateHz}Hz Display • Frame Time ${String.format(Locale.US, "%.1f", telemetry.frameTimeMs)}ms" +
+                        (telemetry.wifiLinkMbps?.let { " • ${it}Mbps" } ?: ""),
+                    icon = Icons.Rounded.Thermostat,
+                    accent = CyberAmber,
+                    compact = false,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
             CpuCoreFrequenciesCard(
                 coreFreqsMHz = telemetry.cpuCoreFreqsMHz,
                 accentColor = palette.accent,
@@ -1778,6 +1852,7 @@ private fun TelemetryPageContent(
                 settings = settings,
                 telemetry = telemetry,
                 isOverlayRunning = isOverlayRunning,
+                isWide = false,
                 accentColor = palette.accent,
                 onBoostRam = onBoostRam,
                 onRunPingTest = onRunPingTest,
@@ -1935,65 +2010,130 @@ private fun TelemetryActionsRow(
     settings: GameTurboSettings,
     telemetry: HardwareTelemetry,
     isOverlayRunning: Boolean,
+    isWide: Boolean = true,
     accentColor: Color,
     onBoostRam: () -> Unit,
     onRunPingTest: () -> Unit,
     onToggleOverlayService: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Button(
-            onClick = onBoostRam,
-            colors = ButtonDefaults.buttonColors(containerColor = accentColor),
-            shape = RoundedCornerShape(12.dp),
-            contentPadding = PaddingValues(horizontal = 10.dp),
-            modifier = Modifier
-                .weight(1f)
-                .height(48.dp)
+    if (isWide) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(Icons.Rounded.RocketLaunch, contentDescription = null, modifier = Modifier.size(17.dp))
-            Spacer(modifier = Modifier.width(5.dp))
-            Text(
-                "One Tap (${settings.totalBoostCount})",
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Button(
+                onClick = onBoostRam,
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+            ) {
+                Icon(Icons.Rounded.RocketLaunch, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(
+                    "One Tap (${settings.totalBoostCount})",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Button(
+                onClick = onRunPingTest,
+                colors = ButtonDefaults.buttonColors(containerColor = CyberElevated),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp),
+                modifier = Modifier
+                    .weight(0.85f)
+                    .height(48.dp)
+            ) {
+                Icon(Icons.Rounded.NetworkCheck, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(
+                    telemetry.pingMs?.let { "${it}ms" } ?: "Ping",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Button(
+                onClick = onToggleOverlayService,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isOverlayRunning) EmeraldActive else CyberElevated
+                ),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp),
+                modifier = Modifier
+                    .weight(0.85f)
+                    .height(48.dp)
+            ) {
+                Text(
+                    if (isOverlayRunning) "HUD ON" else "HUD OFF",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
-        Button(
-            onClick = onRunPingTest,
-            colors = ButtonDefaults.buttonColors(containerColor = CyberElevated),
-            shape = RoundedCornerShape(12.dp),
-            contentPadding = PaddingValues(horizontal = 10.dp),
-            modifier = Modifier
-                .weight(0.85f)
-                .height(48.dp)
+    } else {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(Icons.Rounded.NetworkCheck, contentDescription = null, modifier = Modifier.size(17.dp))
-            Spacer(modifier = Modifier.width(5.dp))
-            Text(
-                telemetry.pingMs?.let { "${it}ms" } ?: "Ping",
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Button(
-            onClick = onToggleOverlayService,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (isOverlayRunning) EmeraldActive else CyberElevated
-            ),
-            shape = RoundedCornerShape(12.dp),
-            contentPadding = PaddingValues(horizontal = 10.dp),
-            modifier = Modifier
-                .weight(0.85f)
-                .height(48.dp)
-        ) {
-            Text(
-                if (isOverlayRunning) "HUD ON" else "HUD OFF",
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Button(
+                onClick = onBoostRam,
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Icon(Icons.Rounded.RocketLaunch, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    "Run One Tap Booster (${settings.totalBoostCount})",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onRunPingTest,
+                    colors = ButtonDefaults.buttonColors(containerColor = CyberElevated),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                ) {
+                    Icon(Icons.Rounded.NetworkCheck, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        telemetry.pingMs?.let { "${it}ms Ping" } ?: "Ping Test",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Button(
+                    onClick = onToggleOverlayService,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isOverlayRunning) EmeraldActive else CyberElevated
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                ) {
+                    Text(
+                        if (isOverlayRunning) "Floating HUD ON" else "Floating HUD OFF",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     }
 }

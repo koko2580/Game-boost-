@@ -1,11 +1,15 @@
 package com.example
 
 import android.app.ActivityManager
+import android.content.ComponentName
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -371,7 +375,11 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.onNodeWithTag("overlay_ram_boost_pill").assertIsDisplayed().performClick()
         composeTestRule.onNodeWithTag("overlay_g_handle").assertIsDisplayed().performClick()
         composeTestRule.onNodeWithText("X-MODE").assertIsDisplayed()
-        composeTestRule.onNodeWithText("/// GAME GENIE").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("TURBO X", substring = true).onFirst().assertIsDisplayed()
+        composeTestRule.onNodeWithText("Quick Control").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithText("QUICK DISPLAY & AUDIO").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Crosshair").assertIsDisplayed()
+        composeTestRule.onNodeWithText("GPU 60Hz").assertIsDisplayed()
         assertTrue(boosted)
         assertTrue(minimized)
     }
@@ -579,7 +587,8 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.waitForIdle()
         composeTestRule.mainClock.advanceTimeBy(250L)
         composeTestRule.onNodeWithTag("overlay_rog_root").assertIsDisplayed()
-        composeTestRule.onNodeWithText("GAME GENIE").assertIsDisplayed()
+        composeTestRule.onNodeWithText("X-MODE").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("TURBO X", substring = true).onFirst().assertIsDisplayed()
 
         composeTestRule.runOnUiThread { activeStyle.value = GamePanelStyle.XIAOMI_STYLE }
         composeTestRule.waitForIdle()
@@ -1329,11 +1338,20 @@ class TurboXMatrixAndPerfTest {
                 .assertIsDisplayed()
                 .fetchSemanticsNode().boundsInRoot
 
-            // Half-screen guarantee: docked HUD must stay <= 56% of landscape screen width so FPS battlefield remains open
-            assertTrue(
-                "${style.name} too wide: ${dockBounds.width} vs screen ${scrimBounds.width}",
-                dockBounds.width <= scrimBounds.width * 0.56f
-            )
+            // Unobstructed battlefield guarantee:
+            // - Bottom-docked ROG/NEW consoles stay <= 56% height so upper gameplay stays open
+            // - Side-docked CLASSIC/XIAOMI/REDMAGIC consoles stay <= 56% width
+            if (style == GamePanelStyle.ROG_STYLE || style == GamePanelStyle.NEW) {
+                assertTrue(
+                    "${style.name} too tall: ${dockBounds.height} vs screen ${scrimBounds.height}",
+                    dockBounds.height <= scrimBounds.height * 0.56f
+                )
+            } else {
+                assertTrue(
+                    "${style.name} too wide: ${dockBounds.width} vs screen ${scrimBounds.width}",
+                    dockBounds.width <= scrimBounds.width * 0.56f
+                )
+            }
 
             // Tap outside / header close handle collapses immediately
             composeTestRule.onNodeWithTag("overlay_g_handle").assertIsDisplayed().performClick()
@@ -1343,6 +1361,150 @@ class TurboXMatrixAndPerfTest {
         // Verify tapping the open outside scrim also collapses immediately
         composeTestRule.onNodeWithTag("overlay_backdrop_scrim").performClick()
         assertEquals(GamePanelStyle.entries.size + 1, dismissCount)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w360dp-h800dp")
+    fun `standard 360dp portrait phone renders cockpit telemetry settings permissions booster and manifest portrait`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val mainActivityInfo = context.packageManager.getActivityInfo(
+            ComponentName(context, MainActivity::class.java),
+            0
+        )
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, mainActivityInfo.screenOrientation)
+
+        val captureActivityInfo = context.packageManager.getActivityInfo(
+            ComponentName(context, com.example.service.ScreenCaptureActivity::class.java),
+            0
+        )
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, captureActivityInfo.screenOrientation)
+
+        val sampleGame = InstalledAppInfo("com.test.portrait", "Genshin Impact", "5.2.0", false)
+        val screenStep = androidx.compose.runtime.mutableIntStateOf(0)
+        val boosterState = OneTapBoosterState(
+            isVisible = true,
+            isRunning = false,
+            isCompleted = true,
+            currentStepIndex = 5,
+            progress = 1f,
+            steps = BoostStepId.entries.map { id ->
+                OneTapStepResult(id, BoostStepStatus.DONE, "OK", "${id.title} ok")
+            },
+            ramUsedBeforePercent = 72,
+            ramUsedAfterPercent = 50,
+            memoryPressureLabel = "NORMAL",
+            freedMb = 78,
+            trimmedApps = 5,
+            thermalLabel = "NORMAL",
+            batteryTempC = 34.5f,
+            batterySaverActive = false,
+            selectedCpuMode = CpuMode.ACCELERATION,
+            appliedProfileLabel = "Acceleration mode",
+            finalScore = 92,
+            finalVerdict = "PEAK READY"
+        )
+
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                when (screenStep.intValue) {
+                    0 -> LauncherHomeScreen(
+                        settings = GameTurboSettings(
+                            addedGamePackages = setOf(sampleGame.packageName),
+                            selectedGamePackage = sampleGame.packageName
+                        ),
+                        telemetry = HardwareTelemetry(
+                            actualFps = 120,
+                            cpuFreqMHz = 2850,
+                            cpuCoreCount = 8,
+                            cpuCoreFreqsMHz = listOf(1800, 1800, 2200, 2200, 2400, 2400, 2850, 3050),
+                            ramUsedPercent = 54
+                        ),
+                        permissions = PermissionStatus(true, true, true, true, true),
+                        addedGames = listOf(sampleGame),
+                        sessionHistory = emptyList(),
+                        remainingTurboSeconds = 3599L,
+                        statusMessage = null,
+                        isOverlayServiceRunning = false,
+                        peekAppIcon = { null },
+                        loadAppIconAsync = { null },
+                        onSelectGame = {},
+                        onStartPlay = {},
+                        onAddTurboTimeClick = {},
+                        onToggleOverlayService = {},
+                        onNavigateAddApps = {},
+                        onNavigateSettings = {},
+                        onNavigatePermissions = {},
+                        onBoostRam = {},
+                        onRunPingTest = {},
+                        onSelectCpuMode = {},
+                        onSelectWallpaperTheme = { _, _ -> },
+                        onDismissStatus = {}
+                    )
+                    1 -> SettingsScreen(
+                        settings = GameTurboSettings(),
+                        telemetry = HardwareTelemetry(actualFps = 90, cpuFreqMHz = 2400),
+                        performanceStatus = PerformanceEngineStatus(),
+                        permissions = PermissionStatus(true, true, true, true, true),
+                        securityAudit = SecurityAuditReport(),
+                        statusMessage = null,
+                        performanceActions = emptyPerformanceActions(),
+                        onUpdateSettings = {},
+                        onBoostRam = {},
+                        onClearCache = {},
+                        onSelectWallpaperTheme = { _, _ -> },
+                        onOpenPermissions = {},
+                        onDismissStatus = {},
+                        onBack = {}
+                    )
+                    2 -> PermissionsScreen(
+                        permissions = PermissionStatus(false, true, false, false, true),
+                        onRefreshPermissions = {},
+                        onRequestDnd = {},
+                        onRequestOverlay = {},
+                        onRequestWriteSettings = {},
+                        onBack = {},
+                        isOnboardingMode = true,
+                        onCompleteOnboarding = {}
+                    )
+                    else -> OneTapBoosterDialog(
+                        state = boosterState,
+                        onReBoost = {},
+                        onOpenPowerSettings = {},
+                        onDismiss = {}
+                    )
+                }
+            }
+        }
+
+        // 1. Portrait Cockpit & Telemetry Tabs
+        composeTestRule.mainClock.advanceTimeBy(300L)
+        composeTestRule.onNodeWithTag("turbo_time_badge").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("hero_quick_boost_btn").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("start_play_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("tab_database").assertIsDisplayed().performClick()
+        composeTestRule.mainClock.advanceTimeBy(320L)
+        composeTestRule.onNodeWithText("Thermal & Network").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Run One Tap Booster (0)").performScrollTo().assertIsDisplayed()
+
+        // 2. Portrait Settings horizontal category pills + stacked DiscreteSliderRow
+        composeTestRule.runOnUiThread { screenStep.intValue = 1 }
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("settings_cat_PERFORMANCE").performScrollTo().assertIsDisplayed().performClick()
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithText("Scrolling sensitivity").performScrollTo().assertIsDisplayed()
+
+        // 3. Portrait Permissions sticky CTA
+        composeTestRule.runOnUiThread { screenStep.intValue = 2 }
+        composeTestRule.mainClock.advanceTimeBy(350L)
+        composeTestRule.onNodeWithTag("grant_all_permissions_btn").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("skip_permissions_btn").assertIsDisplayed()
+
+        // 4. Portrait One Tap Booster dialog
+        composeTestRule.runOnUiThread { screenStep.intValue = 3 }
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("one_tap_final_report_card").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("one_tap_done_btn").assertIsDisplayed()
     }
 
     private fun emptyPerformanceActions(

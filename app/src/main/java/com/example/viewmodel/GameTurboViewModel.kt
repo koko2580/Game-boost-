@@ -192,8 +192,7 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
                     _adStep.value = RewardedAdStep.Hidden
                     stopFloatingOverlayService()
                 } else if (!wasConnected) {
-                    adMobManager?.loadRewardedAd()
-                    adMobManager?.loadInterstitialAd()
+                    adMobManager?.onNetworkConnected()
                 }
                 wasConnected = connected
             }
@@ -204,6 +203,8 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
         val online = networkMonitor.refreshNow()
         if (!online) {
             hardware.audioEnhancer.pulseHaptic(false)
+        } else {
+            adMobManager?.onNetworkConnected()
         }
         return online
     }

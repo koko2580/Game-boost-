@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.webkit.WebView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,9 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.BuildConfig
 import com.example.TurboGameApplication
 import com.example.ui.theme.CyberBorder
@@ -52,10 +56,16 @@ import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import com.google.android.gms.ads.rewarded.RewardedAd
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.net.URL
 import java.util.Date
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 
 object AdUnitIds {
     const val BANNER = "ca-app-pub-5984576938417142/2994020841"
@@ -64,9 +74,27 @@ object AdUnitIds {
     const val APP_OPEN = "ca-app-pub-5984576938417142/2587838493"
 }
 
+enum class AdEndpointProbeResult {
+    HEALTHY,
+    SSL_BLOCKED,
+    UNREACHABLE
+}
+
 object AdLoadPolicy {
     private val THROTTLE_BACKOFF_MS = longArrayOf(60_000L, 90_000L, 120_000L)
     private val STANDARD_BACKOFF_MS = longArrayOf(15_000L, 30_000L, 60_000L, 120_000L)
+    const val SSL_CIRCUIT_BREAKER_MS = 300_000L
+
+    fun isSslOrWebViewError(errorMessage: String?): Boolean {
+        val lower = errorMessage?.lowercase().orEmpty()
+        return lower.contains("ssl") ||
+            lower.contains("handshake") ||
+            lower.contains("cert") ||
+            lower.contains("trust anchor") ||
+            lower.contains("javascriptengine") ||
+            lower.contains("webview") ||
+            lower.contains("err_cert")
+    }
 
     fun isThrottleError(errorCode: Int, errorMessage: String?): Boolean {
         val lower = errorMessage?.lowercase().orEmpty()
@@ -81,6 +109,9 @@ object AdLoadPolicy {
         errorMessage: String?,
         consecutiveFailures: Int
     ): Long {
+        if (isSslOrWebViewError(errorMessage)) {
+            return SSL_CIRCUIT_BREAKER_MS
+        }
         val index = (consecutiveFailures - 1).coerceAtLeast(0)
         return if (isThrottleError(errorCode, errorMessage)) {
             THROTTLE_BACKOFF_MS[index.coerceAtMost(THROTTLE_BACKOFF_MS.lastIndex)]
@@ -91,6 +122,8 @@ object AdLoadPolicy {
 
     fun sanitizeUserErrorMessage(errorCode: Int, errorMessage: String?): String {
         return when {
+            isSslOrWebViewError(errorMessage) ->
+                "Ad server TLS blocked by network or DNS. Switch network or disable ad blocker."
             isThrottleError(errorCode, errorMessage) ->
                 "Ad server is warming up. Auto-retrying shortly..."
             errorCode == AdRequest.ERROR_CODE_NO_FILL ->
@@ -111,13 +144,30 @@ class AdMobManager(private val appContext: Context) {
         private const val INTERSTITIAL_COOLDOWN_MS = 240_000L // 4 minutes between Interstitials
         private const val FOUR_HOURS_MS = 4L * 3600L * 1000L
         private const val MAX_AUTO_RETRIES = 3
+        private const val TLS_PROBE_TIMEOUT_MS = 2500
+        private const val UNREACHABLE_COOLDOWN_MS = 30_000L
+        private val AD_PROBE_URLS = listOf(
+            "https://googleads.g.doubleclick.net/favicon.ico",
+            "https://pagead2.googlesyndication.com/favicon.ico"
+        )
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    @Volatile
     private var isInitialized = false
+
+    @Volatile
+    private var isInitializing = false
+
+    @Volatile
+    private var tlsBlockedUntilElapsedMs = 0L
+
     private val _isSdkInitialized = MutableStateFlow(false)
     val isSdkInitialized: StateFlow<Boolean> = _isSdkInitialized.asStateFlow()
+
+    private val _adHostHealthy = MutableStateFlow(false)
+    val adHostHealthy: StateFlow<Boolean> = _adHostHealthy.asStateFlow()
 
     private var pendingAppOpenLoad = false
     private var pendingInterstitialLoad = false
@@ -165,37 +215,169 @@ class AdMobManager(private val appContext: Context) {
         private set
 
     fun initialize() {
-        if (isInitialized || isRobolectricEnvironment()) return
-        isInitialized = true
+        if (isInitialized || isInitializing || isRobolectricEnvironment()) return
+        val now = SystemClock.elapsedRealtime()
+        if (now < tlsBlockedUntilElapsedMs) return
+        if (!isNetworkAvailable()) return
+
+        isInitializing = true
         Thread {
-            runCatching {
-                MobileAds.initialize(appContext) {
+            try {
+                if (!hasUsableWebViewAndPlayServices()) {
+                    _adHostHealthy.value = false
+                    tlsBlockedUntilElapsedMs = SystemClock.elapsedRealtime() + AdLoadPolicy.SSL_CIRCUIT_BREAKER_MS
                     mainHandler.post {
-                        _isSdkInitialized.value = true
-                        if (pendingRewardedLoad) {
-                            pendingRewardedLoad = false
-                            loadRewardedAd()
-                        } else {
-                            loadRewardedAd()
+                        _rewardedAdLoading.value = false
+                        _rewardedAdError.value = "Ad services unavailable on this device."
+                    }
+                    return@Thread
+                }
+
+                when (probeAdEndpointsTls()) {
+                    AdEndpointProbeResult.HEALTHY -> {
+                        _adHostHealthy.value = true
+                        tlsBlockedUntilElapsedMs = 0L
+                    }
+                    AdEndpointProbeResult.SSL_BLOCKED -> {
+                        _adHostHealthy.value = false
+                        tlsBlockedUntilElapsedMs = SystemClock.elapsedRealtime() + AdLoadPolicy.SSL_CIRCUIT_BREAKER_MS
+                        mainHandler.post {
+                            _rewardedAdLoading.value = false
+                            _rewardedAdError.value =
+                                "Ad server TLS blocked by network or DNS. Switch network or disable ad blocker."
                         }
-                        if (pendingInterstitialLoad) {
-                            pendingInterstitialLoad = false
-                            loadInterstitialAd()
-                        } else {
-                            loadInterstitialAd()
+                        if (BuildConfig.DEBUG) {
+                            Log.w(TAG, "Ad host TLS preflight failed; skipping WebView/MobileAds initialization")
                         }
-                        if (pendingAppOpenLoad) {
-                            pendingAppOpenLoad = false
-                            loadAppOpenAd()
-                        } else {
-                            loadAppOpenAd()
+                        return@Thread
+                    }
+                    AdEndpointProbeResult.UNREACHABLE -> {
+                        _adHostHealthy.value = false
+                        tlsBlockedUntilElapsedMs = SystemClock.elapsedRealtime() + UNREACHABLE_COOLDOWN_MS
+                        mainHandler.post {
+                            _rewardedAdLoading.value = false
+                            _rewardedAdError.value = "Ad servers unreachable right now. Retrying when connected."
                         }
+                        return@Thread
                     }
                 }
-            }.onFailure { e ->
-                Log.e(TAG, "MobileAds init failed", e)
+
+                MobileAds.initialize(appContext) {
+                    isInitialized = true
+                    mainHandler.post {
+                        _isSdkInitialized.value = true
+                        val rewardedImmediate = pendingRewardedLoad
+                        pendingRewardedLoad = false
+                        if (rewardedImmediate) {
+                            loadRewardedAd()
+                        } else {
+                            mainHandler.postDelayed({ loadRewardedAd() }, 1_200L)
+                        }
+
+                        pendingInterstitialLoad = false
+                        mainHandler.postDelayed({ loadInterstitialAd() }, 2_800L)
+
+                        pendingAppOpenLoad = false
+                        mainHandler.postDelayed({ loadAppOpenAd() }, 4_400L)
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "MobileAds init failed", t)
+                mainHandler.post { _rewardedAdLoading.value = false }
+            } finally {
+                isInitializing = false
             }
         }.start()
+    }
+
+    fun onNetworkConnected() {
+        if (isRobolectricEnvironment()) return
+        tlsBlockedUntilElapsedMs = 0L
+        bannerFailures = 0
+        bannerNextAllowedElapsedMs = 0L
+        if (!isInitialized) {
+            initialize()
+        } else {
+            mainHandler.post {
+                if (!_adHostHealthy.value) {
+                    Thread {
+                        if (probeAdEndpointsTls() == AdEndpointProbeResult.HEALTHY) {
+                            _adHostHealthy.value = true
+                            mainHandler.post {
+                                loadRewardedAd()
+                                mainHandler.postDelayed({ loadInterstitialAd() }, 1_500L)
+                            }
+                        }
+                    }.start()
+                } else {
+                    loadRewardedAd()
+                    mainHandler.postDelayed({ loadInterstitialAd() }, 1_500L)
+                }
+            }
+        }
+    }
+
+    private fun hasUsableWebViewAndPlayServices(): Boolean {
+        val hasWebView = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WebView.getCurrentWebViewPackage() != null
+            } else {
+                true
+            }
+        }.getOrDefault(false)
+        if (!hasWebView) return false
+
+        val gmsStatus = runCatching {
+            GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(appContext)
+        }.getOrDefault(ConnectionResult.SUCCESS)
+
+        return gmsStatus != ConnectionResult.SERVICE_MISSING &&
+            gmsStatus != ConnectionResult.SERVICE_INVALID
+    }
+
+    private fun probeAdEndpointsTls(): AdEndpointProbeResult {
+        var sawSslError = false
+        for (urlString in AD_PROBE_URLS) {
+            var conn: HttpsURLConnection? = null
+            try {
+                conn = (URL(urlString).openConnection() as HttpsURLConnection).apply {
+                    connectTimeout = TLS_PROBE_TIMEOUT_MS
+                    readTimeout = TLS_PROBE_TIMEOUT_MS
+                    instanceFollowRedirects = false
+                    useCaches = false
+                    requestMethod = "HEAD"
+                }
+                conn.connect()
+                conn.responseCode
+                return AdEndpointProbeResult.HEALTHY
+            } catch (_: SSLPeerUnverifiedException) {
+                sawSslError = true
+            } catch (_: SSLHandshakeException) {
+                sawSslError = true
+            } catch (_: Throwable) {
+                // Continue probing secondary host
+            } finally {
+                runCatching { conn?.disconnect() }
+            }
+        }
+        return if (sawSslError) {
+            AdEndpointProbeResult.SSL_BLOCKED
+        } else {
+            AdEndpointProbeResult.UNREACHABLE
+        }
+    }
+
+    private fun markSslOrWebViewCircuitBreaker(errorMessage: String?) {
+        _adHostHealthy.value = false
+        tlsBlockedUntilElapsedMs = SystemClock.elapsedRealtime() + AdLoadPolicy.SSL_CIRCUIT_BREAKER_MS
+        bannerNextAllowedElapsedMs = tlsBlockedUntilElapsedMs
+        rewardedNextAllowedElapsedMs = tlsBlockedUntilElapsedMs
+        interstitialNextAllowedElapsedMs = tlsBlockedUntilElapsedMs
+        appOpenNextAllowedElapsedMs = tlsBlockedUntilElapsedMs
+        _rewardedAdError.value = AdLoadPolicy.sanitizeUserErrorMessage(
+            AdRequest.ERROR_CODE_NETWORK_ERROR,
+            errorMessage
+        )
     }
 
     fun suppressAppOpenTemporarily(durationMs: Long = 90_000L) {
@@ -217,9 +399,10 @@ class AdMobManager(private val appContext: Context) {
     // region Banner Throttle Helpers
     fun canAttemptBannerLoad(): Boolean {
         if (isRobolectricEnvironment()) return false
-        if (!_isSdkInitialized.value) return false
+        if (!_isSdkInitialized.value || !_adHostHealthy.value) return false
         if (!isNetworkAvailable()) return false
-        return SystemClock.elapsedRealtime() >= bannerNextAllowedElapsedMs
+        val now = SystemClock.elapsedRealtime()
+        return now >= tlsBlockedUntilElapsedMs && now >= bannerNextAllowedElapsedMs
     }
 
     fun recordBannerSuccess() {
@@ -229,6 +412,9 @@ class AdMobManager(private val appContext: Context) {
 
     fun recordBannerFailure(error: LoadAdError) {
         bannerFailures++
+        if (AdLoadPolicy.isSslOrWebViewError(error.message)) {
+            markSslOrWebViewCircuitBreaker(error.message)
+        }
         val backoff = AdLoadPolicy.computeBackoffMs(error.code, error.message, bannerFailures)
         bannerNextAllowedElapsedMs = SystemClock.elapsedRealtime() + backoff
         if (BuildConfig.DEBUG) {
@@ -245,11 +431,12 @@ class AdMobManager(private val appContext: Context) {
         if (isRobolectricEnvironment() || isLoadingAppOpen || isAppOpenAvailable()) return
         if (!_isSdkInitialized.value) {
             pendingAppOpenLoad = true
+            initialize()
             return
         }
-        if (!isNetworkAvailable()) return
+        if (!_adHostHealthy.value || !isNetworkAvailable()) return
         val now = SystemClock.elapsedRealtime()
-        if (now < appOpenNextAllowedElapsedMs) return
+        if (now < tlsBlockedUntilElapsedMs || now < appOpenNextAllowedElapsedMs) return
 
         isLoadingAppOpen = true
         AppOpenAd.load(
@@ -271,10 +458,14 @@ class AdMobManager(private val appContext: Context) {
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     isLoadingAppOpen = false
                     appOpenFailures++
+                    val isSslError = AdLoadPolicy.isSslOrWebViewError(error.message)
+                    if (isSslError) {
+                        markSslOrWebViewCircuitBreaker(error.message)
+                    }
                     val backoff = AdLoadPolicy.computeBackoffMs(error.code, error.message, appOpenFailures)
                     appOpenNextAllowedElapsedMs = SystemClock.elapsedRealtime() + backoff
                     if (BuildConfig.DEBUG) Log.w(TAG, "AppOpenAd deferred ${backoff / 1000}s (code ${error.code})")
-                    if (appOpenFailures <= MAX_AUTO_RETRIES) {
+                    if (!isSslError && appOpenFailures <= MAX_AUTO_RETRIES) {
                         appOpenRetryRunnable?.let { mainHandler.removeCallbacks(it) }
                         val runnable = Runnable { loadAppOpenAd() }
                         appOpenRetryRunnable = runnable
@@ -334,11 +525,12 @@ class AdMobManager(private val appContext: Context) {
         if (isRobolectricEnvironment() || isLoadingInterstitial || interstitialAd != null) return
         if (!_isSdkInitialized.value) {
             pendingInterstitialLoad = true
+            initialize()
             return
         }
-        if (!isNetworkAvailable()) return
+        if (!_adHostHealthy.value || !isNetworkAvailable()) return
         val now = SystemClock.elapsedRealtime()
-        if (now < interstitialNextAllowedElapsedMs) return
+        if (now < tlsBlockedUntilElapsedMs || now < interstitialNextAllowedElapsedMs) return
 
         isLoadingInterstitial = true
         InterstitialAd.load(
@@ -360,10 +552,14 @@ class AdMobManager(private val appContext: Context) {
                     interstitialAd = null
                     isLoadingInterstitial = false
                     interstitialFailures++
+                    val isSslError = AdLoadPolicy.isSslOrWebViewError(error.message)
+                    if (isSslError) {
+                        markSslOrWebViewCircuitBreaker(error.message)
+                    }
                     val backoff = AdLoadPolicy.computeBackoffMs(error.code, error.message, interstitialFailures)
                     interstitialNextAllowedElapsedMs = SystemClock.elapsedRealtime() + backoff
                     if (BuildConfig.DEBUG) Log.w(TAG, "InterstitialAd deferred ${backoff / 1000}s (code ${error.code})")
-                    if (interstitialFailures <= MAX_AUTO_RETRIES) {
+                    if (!isSslError && interstitialFailures <= MAX_AUTO_RETRIES) {
                         interstitialRetryRunnable?.let { mainHandler.removeCallbacks(it) }
                         val runnable = Runnable { loadInterstitialAd() }
                         interstitialRetryRunnable = runnable
@@ -460,10 +656,21 @@ class AdMobManager(private val appContext: Context) {
         }
         if (_rewardedAdLoading.value) return
 
+        val now = SystemClock.elapsedRealtime()
+        if (now < tlsBlockedUntilElapsedMs) {
+            _rewardedAdLoading.value = false
+            if (_rewardedAdError.value.isNullOrBlank()) {
+                _rewardedAdError.value =
+                    "Ad server TLS blocked by network or DNS. Switch network or disable ad blocker."
+            }
+            return
+        }
+
         if (!_isSdkInitialized.value) {
             pendingRewardedLoad = true
             _rewardedAdLoading.value = true
             _rewardedAdError.value = null
+            initialize()
             return
         }
 
@@ -473,7 +680,12 @@ class AdMobManager(private val appContext: Context) {
             return
         }
 
-        val now = SystemClock.elapsedRealtime()
+        if (!_adHostHealthy.value) {
+            _rewardedAdLoading.value = false
+            _rewardedAdError.value = "Ad servers unreachable right now. Retrying when connected."
+            return
+        }
+
         if (now < rewardedNextAllowedElapsedMs) {
             val remainingSec = ((rewardedNextAllowedElapsedMs - now + 999L) / 1000L).toInt()
             _rewardedCooldownSeconds.value = remainingSec
@@ -508,6 +720,10 @@ class AdMobManager(private val appContext: Context) {
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     rewardedAd = null
                     rewardedFailures++
+                    val isSslError = AdLoadPolicy.isSslOrWebViewError(error.message)
+                    if (isSslError) {
+                        markSslOrWebViewCircuitBreaker(error.message)
+                    }
                     val backoffMs = AdLoadPolicy.computeBackoffMs(error.code, error.message, rewardedFailures)
                     rewardedNextAllowedElapsedMs = SystemClock.elapsedRealtime() + backoffMs
                     _rewardedAdReady.value = false
@@ -516,7 +732,7 @@ class AdMobManager(private val appContext: Context) {
                     startRewardedCooldownTicker()
                     if (BuildConfig.DEBUG) Log.w(TAG, "RewardedAd deferred ${backoffMs / 1000}s (code ${error.code})")
 
-                    if (rewardedFailures <= MAX_AUTO_RETRIES) {
+                    if (!isSslError && rewardedFailures <= MAX_AUTO_RETRIES) {
                         rewardedRetryRunnable?.let { mainHandler.removeCallbacks(it) }
                         val runnable = Runnable { loadRewardedAd() }
                         rewardedRetryRunnable = runnable
@@ -592,29 +808,24 @@ fun AdMobBannerBar(
     modifier: Modifier = Modifier
 ) {
     if (LocalInspectionMode.current || isRobolectricEnvironment()) {
-        Box(
-            modifier = modifier
-                .testTag("admob_banner_container")
-                .fillMaxWidth()
-                .height(52.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MidnightSurface.copy(alpha = 0.92f))
-                .border(1.dp, CyberBorder.copy(alpha = 0.7f), RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("Sponsored Banner", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-        }
+        BannerDockPlaceholder(modifier)
         return
     }
 
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val adMobManager = remember(context) {
         (context.applicationContext as? TurboGameApplication)?.adMobManager
     }
-    val sdkReady by (adMobManager?.isSdkInitialized ?: remember { MutableStateFlow(true) })
+    val sdkReady by (adMobManager?.isSdkInitialized ?: remember { MutableStateFlow(false) })
+        .collectAsState()
+    val hostHealthy by (adMobManager?.adHostHealthy ?: remember { MutableStateFlow(false) })
         .collectAsState()
 
-    var hasRequestedLoad by remember { mutableStateOf(false) }
+    if (!sdkReady || !hostHealthy) {
+        BannerDockPlaceholder(modifier)
+        return
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -648,9 +859,11 @@ fun AdMobBannerBar(
             }
         }
 
-        LaunchedEffect(sdkReady, adView) {
-            if (sdkReady && !hasRequestedLoad) {
-                val allowed = adMobManager?.canAttemptBannerLoad() ?: true
+        var hasRequestedLoad by remember(adView) { mutableStateOf(false) }
+
+        LaunchedEffect(sdkReady, hostHealthy, adView) {
+            if (sdkReady && hostHealthy && !hasRequestedLoad) {
+                val allowed = adMobManager?.canAttemptBannerLoad() ?: false
                 if (allowed) {
                     hasRequestedLoad = true
                     adView.loadAd(AdRequest.Builder().build())
@@ -658,8 +871,17 @@ fun AdMobBannerBar(
             }
         }
 
-        DisposableEffect(adView) {
+        DisposableEffect(lifecycleOwner, adView) {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_RESUME -> runCatching { adView.resume() }
+                    Lifecycle.Event.ON_PAUSE -> runCatching { adView.pause() }
+                    else -> Unit
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
             onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
                 runCatching { adView.destroy() }
             }
         }
@@ -668,5 +890,21 @@ fun AdMobBannerBar(
             factory = { adView },
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+@Composable
+private fun BannerDockPlaceholder(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .testTag("admob_banner_container")
+            .fillMaxWidth()
+            .height(52.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MidnightSurface.copy(alpha = 0.92f))
+            .border(1.dp, CyberBorder.copy(alpha = 0.7f), RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text("Sponsored Banner", style = MaterialTheme.typography.labelSmall, color = TextMuted)
     }
 }

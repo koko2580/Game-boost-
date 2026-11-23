@@ -529,30 +529,34 @@ fun DiscreteSliderRow(
     onHelpClick: () -> Unit,
     helpTestTag: String? = null
 ) {
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        val stackHeader = maxWidth < 440.dp
+        val denseLabels = labels.size > 6
+
+        val titleWithHelp: @Composable (Modifier) -> Unit = { titleModifier ->
             Row(
-                modifier = Modifier.width(142.dp),
+                modifier = titleModifier,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary,
-                    modifier = Modifier.weight(1f)
+                    modifier = if (stackHeader) Modifier else Modifier.weight(1f)
                 )
+                if (stackHeader) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
                 IconButton(
                     onClick = onHelpClick,
                     modifier = Modifier
                         .then(if (helpTestTag != null) Modifier.testTag(helpTestTag) else Modifier)
-                        .size(30.dp)
+                        .minimumInteractiveComponentSize()
+                        .size(32.dp)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.HelpOutline,
@@ -562,7 +566,10 @@ fun DiscreteSliderRow(
                     )
                 }
             }
-            Column(modifier = Modifier.weight(1f)) {
+        }
+
+        val sliderColumn: @Composable (Modifier) -> Unit = { colModifier ->
+            Column(modifier = colModifier) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -570,9 +577,13 @@ fun DiscreteSliderRow(
                     labels.forEachIndexed { i, lbl ->
                         Text(
                             text = lbl,
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = if (denseLabels) 10.sp else 11.sp
+                            ),
                             color = if (i == selectedIndex) TextPrimary else TextSecondary,
-                            fontWeight = if (i == selectedIndex) FontWeight.Bold else FontWeight.Normal
+                            fontWeight = if (i == selectedIndex) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -589,13 +600,29 @@ fun DiscreteSliderRow(
                 )
             }
         }
-        Text(
-            text = description,
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextMuted
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        HorizontalDivider(color = CyberBorder.copy(alpha = 0.45f))
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            if (stackHeader) {
+                titleWithHelp(Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(2.dp))
+                sliderColumn(Modifier.fillMaxWidth())
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    titleWithHelp(Modifier.width(142.dp))
+                    sliderColumn(Modifier.weight(1f))
+                }
+            }
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextMuted
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider(color = CyberBorder.copy(alpha = 0.45f))
+        }
     }
 }
 
@@ -671,7 +698,13 @@ private fun ControlLayoutPreviewCard(
                             .background(Color.White)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("----- Drag to Open Game Mode", style = MaterialTheme.typography.labelSmall, color = TextPrimary)
+                    Text(
+                        text = "----- Drag to Open Game Mode",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
             ControlPanelLayout.RIGHT_EDGE_MENU -> {
@@ -681,13 +714,14 @@ private fun ControlLayoutPreviewCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(
+                        modifier = Modifier.weight(1f),
                         horizontalAlignment = Alignment.End,
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text("Hide menu ----", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = TextPrimary)
-                        Text("Open Game Mode ----", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = TextPrimary)
-                        Text("Open settings ----", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = TextPrimary)
-                        Text("Close All ----", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = TextPrimary)
+                        Text("Hide menu ----", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("Open Game Mode ----", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("Open settings ----", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("Close All ----", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Spacer(modifier = Modifier.width(4.dp))
                     Column(
@@ -832,42 +866,71 @@ private fun GamePanelStyleCard(
                         drawCircle(CyberAmber, radius = 11.dp.toPx(), center = Offset(w * 0.78f, h * 0.45f), style = Stroke(2.dp.toPx()))
                     }
                     GamePanelStyle.NEW -> {
-                        val leftWing = Path().apply {
-                            moveTo(0f, 0f); lineTo(w * 0.30f, 0f); lineTo(w * 0.40f, h * 0.45f); lineTo(w * 0.24f, h); lineTo(0f, h); close()
+                        // Bottom-docked angular wing HUD (accent themed)
+                        val crown = Path().apply {
+                            moveTo(w * 0.25f, h * 0.28f); lineTo(w * 0.75f, h * 0.28f)
+                            lineTo(w * 0.79f, h * 0.39f); lineTo(w * 0.21f, h * 0.39f); close()
                         }
-                        val rightWing = Path().apply {
-                            moveTo(w, 0f); lineTo(w * 0.70f, 0f); lineTo(w * 0.60f, h * 0.45f); lineTo(w * 0.76f, h); lineTo(w, h); close()
+                        val chassis = Path().apply {
+                            moveTo(w * 0.08f, h * 0.45f); lineTo(w * 0.32f, h * 0.45f)
+                            lineTo(w * 0.38f, h * 0.38f); lineTo(w * 0.62f, h * 0.38f)
+                            lineTo(w * 0.68f, h * 0.45f); lineTo(w * 0.92f, h * 0.45f)
+                            lineTo(w * 0.96f, h * 0.55f); lineTo(w * 0.96f, h * 0.90f)
+                            lineTo(w * 0.91f, h * 0.96f); lineTo(w * 0.09f, h * 0.96f)
+                            lineTo(w * 0.04f, h * 0.90f); lineTo(w * 0.04f, h * 0.55f); close()
                         }
-                        drawPath(leftWing, Color(0xFF1A1E2B))
-                        drawPath(rightWing, Color(0xFF1A1E2B))
-                        drawPath(leftWing, fallbackAccent, style = Stroke(1.8.dp.toPx()))
-                        drawPath(rightWing, fallbackAccent, style = Stroke(1.8.dp.toPx()))
-                        drawCircle(fallbackAccent, radius = 10.dp.toPx(), center = Offset(w * 0.22f, h * 0.44f), style = Stroke(1.8.dp.toPx()))
-                        drawCircle(fallbackAccent, radius = 10.dp.toPx(), center = Offset(w * 0.78f, h * 0.44f), style = Stroke(1.8.dp.toPx()))
+                        drawPath(crown, Color(0xFF0E1424))
+                        drawPath(crown, fallbackAccent, style = Stroke(1.3.dp.toPx()))
+                        drawPath(chassis, Color(0xFF0B101D))
+                        drawPath(chassis, fallbackAccent, style = Stroke(1.7.dp.toPx()))
+                        drawRoundRect(
+                            color = fallbackAccent.copy(alpha = 0.85f),
+                            topLeft = Offset(w * 0.39f, h * 0.47f),
+                            size = Size(w * 0.22f, h * 0.14f),
+                            cornerRadius = CornerRadius(2.5.dp.toPx())
+                        )
+                        for (c in 0 until 2) {
+                            drawCircle(fallbackAccent.copy(alpha = 0.7f), radius = 3.2.dp.toPx(), center = Offset(w * (0.15f + c * 0.11f), h * 0.66f))
+                            drawCircle(fallbackAccent.copy(alpha = 0.7f), radius = 3.2.dp.toPx(), center = Offset(w * (0.74f + c * 0.11f), h * 0.66f))
+                        }
                     }
                     GamePanelStyle.ROG_STYLE -> {
-                        // Half-screen ROG Game Genie crimson tactical dock
-                        val rogDock = Path().apply {
-                            moveTo(w * 0.05f, h * 0.06f); lineTo(w * 0.56f, h * 0.06f)
-                            lineTo(w * 0.60f, h * 0.16f); lineTo(w * 0.60f, h * 0.94f)
-                            lineTo(w * 0.05f, h * 0.94f); close()
+                        // Bottom-docked ROG Game Genie crimson wing console + top HUD crown
+                        val crown = Path().apply {
+                            moveTo(w * 0.22f, h * 0.25f); lineTo(w * 0.78f, h * 0.25f)
+                            lineTo(w * 0.82f, h * 0.37f); lineTo(w * 0.18f, h * 0.37f); close()
                         }
-                        drawPath(rogDock, Color(0xFF131622))
-                        drawPath(rogDock, Color(0xFFFF1744), style = Stroke(1.8.dp.toPx()))
-                        drawRoundRect(Color(0xFFFF1744), Offset(w * 0.10f, h * 0.14f), Size(w * 0.43f, h * 0.10f), CornerRadius(3.dp.toPx()))
-                        for (c in 0 until 3) {
-                            drawRoundRect(
-                                color = if (c == 2) Color(0xFFFF1744) else Color(0xFF232838),
-                                topLeft = Offset(w * (0.10f + c * 0.15f), h * 0.30f),
-                                size = Size(w * 0.13f, h * 0.14f),
-                                cornerRadius = CornerRadius(3.dp.toPx())
-                            )
-                            drawRoundRect(
-                                color = Color(0xFF1E2232),
-                                topLeft = Offset(w * (0.10f + c * 0.15f), h * 0.52f),
-                                size = Size(w * 0.13f, h * 0.32f),
-                                cornerRadius = CornerRadius(3.dp.toPx())
-                            )
+                        val chassis = Path().apply {
+                            moveTo(w * 0.07f, h * 0.44f); lineTo(w * 0.31f, h * 0.44f)
+                            lineTo(w * 0.37f, h * 0.37f); lineTo(w * 0.63f, h * 0.37f)
+                            lineTo(w * 0.69f, h * 0.44f); lineTo(w * 0.93f, h * 0.44f)
+                            lineTo(w * 0.97f, h * 0.54f); lineTo(w * 0.97f, h * 0.90f)
+                            lineTo(w * 0.92f, h * 0.96f); lineTo(w * 0.08f, h * 0.96f)
+                            lineTo(w * 0.03f, h * 0.90f); lineTo(w * 0.03f, h * 0.54f); close()
+                        }
+                        drawPath(crown, Color(0xFF0E1322))
+                        drawPath(crown, Color(0xFFFF1744), style = Stroke(1.3.dp.toPx()))
+                        drawPath(chassis, Color(0xFF0A0E1B))
+                        drawPath(chassis, Color(0xFFFF1744), style = Stroke(1.8.dp.toPx()))
+                        // Central X-MODE glow pod
+                        drawRoundRect(
+                            color = Color(0xFFFF1744),
+                            topLeft = Offset(w * 0.38f, h * 0.46f),
+                            size = Size(w * 0.24f, h * 0.14f),
+                            cornerRadius = CornerRadius(2.5.dp.toPx())
+                        )
+                        drawRoundRect(
+                            color = Color(0xFF23293D),
+                            topLeft = Offset(w * 0.40f, h * 0.67f),
+                            size = Size(w * 0.20f, h * 0.12f),
+                            cornerRadius = CornerRadius(2.dp.toPx())
+                        )
+                        // Symmetrical left & right tool wing nodes
+                        for (c in 0 until 2) {
+                            drawCircle(Color(0xFFFF4D6D), radius = 3.2.dp.toPx(), center = Offset(w * (0.14f + c * 0.11f), h * 0.64f))
+                            drawCircle(Color(0xFF2B3247), radius = 3.2.dp.toPx(), center = Offset(w * (0.14f + c * 0.11f), h * 0.81f))
+                            drawCircle(Color(0xFFFF4D6D), radius = 3.2.dp.toPx(), center = Offset(w * (0.75f + c * 0.11f), h * 0.64f))
+                            drawCircle(Color(0xFF2B3247), radius = 3.2.dp.toPx(), center = Offset(w * (0.75f + c * 0.11f), h * 0.81f))
                         }
                     }
                     GamePanelStyle.XIAOMI_STYLE -> {

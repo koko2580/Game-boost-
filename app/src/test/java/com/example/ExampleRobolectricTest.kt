@@ -109,6 +109,13 @@ class ExampleRobolectricTest {
     assertEquals(false, sanitized.contains("ca-app-pub"))
     assertEquals(false, sanitized.contains("request URL"))
     assertEquals(false, sanitized.contains("code 1"))
+
+    val sslMsg = "SSL handshake failed: net_error -200"
+    assertEquals(true, com.example.ads.AdLoadPolicy.isSslOrWebViewError(sslMsg))
+    assertEquals(com.example.ads.AdLoadPolicy.SSL_CIRCUIT_BREAKER_MS, com.example.ads.AdLoadPolicy.computeBackoffMs(2, sslMsg, 1))
+    val sanitizedSsl = com.example.ads.AdLoadPolicy.sanitizeUserErrorMessage(2, sslMsg)
+    assertEquals(true, sanitizedSsl.contains("TLS"))
+    assertEquals(false, sanitizedSsl.contains("net_error"))
   }
 
   @Test
