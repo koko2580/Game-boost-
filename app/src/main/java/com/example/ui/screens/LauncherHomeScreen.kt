@@ -171,7 +171,8 @@ fun LauncherHomeScreen(
     onRunPingTest: () -> Unit,
     onSelectCpuMode: (CpuMode) -> Unit,
     onSelectWallpaperTheme: (WallpaperTheme, String?) -> Unit,
-    onDismissStatus: () -> Unit
+    onDismissStatus: () -> Unit,
+    onNavigateXGameSpace: () -> Unit = {}
 ) {
     val palette = LocalTurboAccent.current
     val modeGlowColor = cpuModeColor(settings.cpuMode, palette.accent)
@@ -388,6 +389,14 @@ fun LauncherHomeScreen(
                                     modifier = Modifier.padding(horizontal = 2.dp)
                                 )
                             }
+                            HeaderCircleButton(
+                                icon = Icons.Rounded.SportsEsports,
+                                description = "X-Game Space",
+                                badgeDotColor = palette.accent,
+                                compact = true,
+                                onClick = onNavigateXGameSpace,
+                                testTag = "tab_x_game_space"
+                            )
                         }
 
                         val allPermsOk = permissions.allGranted
@@ -724,6 +733,16 @@ fun LauncherHomeScreen(
                                 compact = isCompactHeight,
                                 onClick = { selectedBottomTab = 1 },
                                 testTag = "tab_database",
+                                modifier = Modifier.weight(1f)
+                            )
+                            CockpitNavPill(
+                                title = "X-Space",
+                                icon = Icons.Rounded.SportsEsports,
+                                selected = false,
+                                accentColor = palette.accent,
+                                compact = isCompactHeight,
+                                onClick = onNavigateXGameSpace,
+                                testTag = "tab_x_game_space",
                                 modifier = Modifier.weight(1f)
                             )
                         }

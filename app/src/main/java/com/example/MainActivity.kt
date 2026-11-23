@@ -66,6 +66,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.data.ScreenColorMode
 import com.example.service.GameOverlayService
@@ -85,6 +86,7 @@ import com.example.ui.screens.PerformanceActions
 import com.example.ui.screens.PermissionsScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.TurboSplashScreen
+import com.example.ui.screens.TurboXGamingPanel
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.EmeraldBright
 import com.example.ui.theme.LocalTurboAccent
@@ -100,6 +102,7 @@ private const val ROUTE_LAUNCHER = "launcher"
 private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_ADD_APPS = "add_apps"
 private const val ROUTE_PERMISSIONS = "permissions"
+private const val ROUTE_X_GAME_SPACE = "x_game_space"
 
 class MainActivity : ComponentActivity() {
 
@@ -216,13 +219,6 @@ class MainActivity : ComponentActivity() {
             ) {
                 viewModel.syncWindowPerformance(this@MainActivity)
             }
-            LaunchedEffect(settings.rotationLock) {
-                requestedOrientation = if (settings.rotationLock) {
-                    ActivityInfo.SCREEN_ORIENTATION_LOCKED
-                } else {
-                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                }
-            }
             LaunchedEffect(settings.lockBrightness, brightness) {
                 val lp = window.attributes
                 lp.screenBrightness = if (settings.lockBrightness) brightness else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
@@ -249,6 +245,16 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(LocalTurboTouchConfig provides touchConfig) {
                 TurboGameXTheme(wallpaperTheme = settings.wallpaperTheme) {
                     val navController = rememberNavController()
+                    val backStackEntry by navController.currentBackStackEntryAsState()
+                    val currentRoute = backStackEntry?.destination?.route
+
+                    LaunchedEffect(settings.rotationLock, currentRoute) {
+                        requestedOrientation = when {
+                            settings.rotationLock -> ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                            currentRoute == ROUTE_X_GAME_SPACE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        }
+                    }
 
                     LaunchedEffect(pendingRoute) {
                         val target = pendingRoute
@@ -293,6 +299,65 @@ class MainActivity : ComponentActivity() {
                                 onRunPingTest = viewModel::runPingTest,
                                 onSelectCpuMode = viewModel::setCpuMode,
                                 onSelectWallpaperTheme = viewModel::setWallpaperTheme,
+                                onDismissStatus = viewModel::clearStatus,
+                                onNavigateXGameSpace = {
+                                    navController.navigate(ROUTE_X_GAME_SPACE) { launchSingleTop = true }
+                                }
+                            )
+                        }
+
+                        composable(ROUTE_X_GAME_SPACE) {
+                            TurboXGamingPanel(
+                                settings = settings,
+                                telemetry = telemetry,
+                                performanceStatus = performanceStatus,
+                                permissions = permissions,
+                                addedGames = addedGames,
+                                remainingTurboSeconds = remainingTurboSeconds,
+                                brightnessFraction = brightness,
+                                volumeFraction = volume,
+                                autoBrightness = autoBrightness,
+                                autoRotate = autoRotate,
+                                isOverlayServiceRunning = isOverlayServiceRunning,
+                                statusMessage = statusMessage,
+                                peekAppIcon = viewModel::peekAppIcon,
+                                loadAppIconAsync = viewModel::loadAppIconAsync,
+                                onBack = { navController.popBackStack() },
+                                onSelectGame = viewModel::selectGame,
+                                onStartPlay = viewModel::launchSelectedGame,
+                                onBoostRam = { viewModel.runOneTapBooster() },
+                                onClearCache = viewModel::clearCache,
+                                onRunPingTest = viewModel::runPingTest,
+                                onSelectCpuMode = viewModel::setCpuMode,
+                                onToggleTurboX = viewModel::engageTurboX,
+                                onToggleGpuBoost = {
+                                    viewModel.setIncreaseGpuPerformance(!settings.increaseGpuPerformance)
+                                },
+                                onCycleFrameRate = viewModel::cycleFrameRate,
+                                onCycleCrosshair = viewModel::cycleCrosshair,
+                                onCycleScreenColor = viewModel::cycleScreenColor,
+                                onCycleEqPreset = viewModel::cycleEffectSound,
+                                onToggleDnd = viewModel::toggleDoNotDisturb,
+                                onToggleNoNotif = viewModel::toggleNoNotifications,
+                                onToggleAutoRotate = viewModel::toggleAutoRotate,
+                                onToggleAutoBrightness = viewModel::toggleAutoBrightness,
+                                onToggleActiveInfo = {
+                                    viewModel.updateSettings { it.copy(activeInfoHud = !it.activeInfoHud) }
+                                },
+                                onBrightnessChange = viewModel::setBrightness,
+                                onVolumeChange = viewModel::setVolume,
+                                onToggleOverlayService = {
+                                    if (isOverlayServiceRunning) {
+                                        viewModel.stopFloatingOverlayService()
+                                    } else {
+                                        viewModel.startFloatingOverlayService()
+                                    }
+                                },
+                                onOpenInAppOverlay = viewModel::openInAppOverlay,
+                                onAddTurboTime = { viewModel.openWatchAdPrompt() },
+                                onNavigateAddApps = { navController.navigate(ROUTE_ADD_APPS) },
+                                onNavigatePermissions = { navController.navigate(ROUTE_PERMISSIONS) },
+                                onNavigateSettings = { navController.navigate(ROUTE_SETTINGS) },
                                 onDismissStatus = viewModel::clearStatus
                             )
                         }

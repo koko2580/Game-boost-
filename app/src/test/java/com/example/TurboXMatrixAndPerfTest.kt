@@ -45,6 +45,7 @@ import com.example.ui.screens.PerformanceActions
 import com.example.ui.screens.PermissionsScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.TurboSplashScreen
+import com.example.ui.screens.TurboXGamingPanel
 import com.example.ui.theme.TurboGameXTheme
 import com.example.viewmodel.RewardedAdStep
 import kotlinx.coroutines.test.runTest
@@ -1505,6 +1506,200 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.mainClock.advanceTimeBy(250L)
         composeTestRule.onNodeWithTag("one_tap_final_report_card").assertIsDisplayed()
         composeTestRule.onNodeWithTag("one_tap_done_btn").assertIsDisplayed()
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w840dp-h360dp")
+    fun `landscape REDMAGIC X-Game Space panel displays three sections and invokes existing callbacks`() {
+        var launched = false
+        var boosted = false
+        var backClicked = false
+        var overlayToggled = false
+        var pingClicked = false
+        var selectedCpu: CpuMode? = null
+        val sampleGames = listOf(
+            InstalledAppInfo("com.test.pubg", "PUBG Mobile", "3.4", false),
+            InstalledAppInfo("com.test.mlbb", "Mobile Legends", "1.9", false)
+        )
+        composeTestRule.mainClock.autoAdvance = false
+
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                TurboXGamingPanel(
+                    settings = GameTurboSettings(
+                        selectedGamePackage = "com.test.pubg",
+                        cpuMode = CpuMode.BALANCED,
+                        frameRateTarget = 120,
+                        turboXMode = true
+                    ),
+                    telemetry = HardwareTelemetry(
+                        actualFps = 118,
+                        cpuFreqMHz = 2850,
+                        cpuCoreCount = 8,
+                        ramUsedPercent = 48,
+                        batteryPercent = 82,
+                        batteryTempCelsius = 36.4f,
+                        pingMs = 19,
+                        frameTimeMs = 8.4f
+                    ),
+                    performanceStatus = PerformanceEngineStatus(activeGpuPipelineLabel = "Skia Vulkan"),
+                    permissions = PermissionStatus(),
+                    addedGames = sampleGames,
+                    remainingTurboSeconds = 3600L,
+                    brightnessFraction = 0.7f,
+                    volumeFraction = 0.6f,
+                    autoBrightness = false,
+                    autoRotate = false,
+                    isOverlayServiceRunning = false,
+                    statusMessage = null,
+                    peekAppIcon = { null },
+                    loadAppIconAsync = { null },
+                    onBack = { backClicked = true },
+                    onSelectGame = {},
+                    onStartPlay = { launched = true },
+                    onBoostRam = { boosted = true },
+                    onClearCache = {},
+                    onRunPingTest = { pingClicked = true },
+                    onSelectCpuMode = { selectedCpu = it },
+                    onToggleTurboX = {},
+                    onToggleGpuBoost = {},
+                    onCycleFrameRate = {},
+                    onCycleCrosshair = {},
+                    onCycleScreenColor = {},
+                    onCycleEqPreset = {},
+                    onToggleDnd = {},
+                    onToggleNoNotif = {},
+                    onToggleAutoRotate = {},
+                    onToggleAutoBrightness = {},
+                    onToggleActiveInfo = {},
+                    onBrightnessChange = {},
+                    onVolumeChange = {},
+                    onToggleOverlayService = { overlayToggled = true },
+                    onOpenInAppOverlay = {},
+                    onAddTurboTime = {},
+                    onNavigateAddApps = {},
+                    onNavigatePermissions = {},
+                    onNavigateSettings = {},
+                    onDismissStatus = {}
+                )
+            }
+        }
+
+        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.onNodeWithTag("turbo_x_gaming_panel_root").assertIsDisplayed()
+        composeTestRule.onNodeWithText("X-GAME SPACE", substring = true).assertIsDisplayed()
+        composeTestRule.onNodeWithText("TELEMETRY CORE").assertIsDisplayed()
+        composeTestRule.onNodeWithText("GAMING CONTROLS").assertIsDisplayed()
+        composeTestRule.onNodeWithText("PUBG Mobile").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("xgame_launch_btn").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("xgame_onetap_btn").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("xgame_hud_toggle_btn").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("xgame_back_btn").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithText("19ms").performClick()
+        composeTestRule.onNodeWithText("TURBO").performClick()
+
+        assertTrue(launched)
+        assertTrue(boosted)
+        assertTrue(overlayToggled)
+        assertTrue(backClicked)
+        assertTrue(pingClicked)
+        assertEquals(CpuMode.ACCELERATION, selectedCpu)
+    }
+
+    @Test
+    @Config(sdk = [36], qualifiers = "w360dp-h800dp")
+    fun `portrait Launcher X-Space entry navigates cleanly and portrait X-Game Space renders safely`() {
+        var openedXGameSpace = false
+        val showXGameSpace = androidx.compose.runtime.mutableStateOf(false)
+        composeTestRule.mainClock.autoAdvance = false
+
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                if (!showXGameSpace.value) {
+                    LauncherHomeScreen(
+                        settings = GameTurboSettings(),
+                        telemetry = HardwareTelemetry(actualFps = 90, cpuFreqMHz = 2400, ramUsedPercent = 45),
+                        permissions = PermissionStatus(),
+                        addedGames = emptyList(),
+                        sessionHistory = emptyList(),
+                        remainingTurboSeconds = 3600L,
+                        statusMessage = null,
+                        isOverlayServiceRunning = false,
+                        peekAppIcon = { null },
+                        loadAppIconAsync = { null },
+                        onSelectGame = {},
+                        onStartPlay = {},
+                        onAddTurboTimeClick = {},
+                        onToggleOverlayService = {},
+                        onNavigateAddApps = {},
+                        onNavigateSettings = {},
+                        onNavigatePermissions = {},
+                        onBoostRam = {},
+                        onRunPingTest = {},
+                        onSelectCpuMode = {},
+                        onSelectWallpaperTheme = { _, _ -> },
+                        onDismissStatus = {},
+                        onNavigateXGameSpace = {
+                            openedXGameSpace = true
+                            showXGameSpace.value = true
+                        }
+                    )
+                } else {
+                    TurboXGamingPanel(
+                        settings = GameTurboSettings(),
+                        telemetry = HardwareTelemetry(actualFps = 90, cpuFreqMHz = 2400, ramUsedPercent = 45),
+                        performanceStatus = PerformanceEngineStatus(),
+                        permissions = PermissionStatus(),
+                        addedGames = emptyList(),
+                        remainingTurboSeconds = 3600L,
+                        brightnessFraction = 0.7f,
+                        volumeFraction = 0.6f,
+                        autoBrightness = false,
+                        autoRotate = false,
+                        isOverlayServiceRunning = false,
+                        statusMessage = null,
+                        peekAppIcon = { null },
+                        loadAppIconAsync = { null },
+                        onBack = { showXGameSpace.value = false },
+                        onSelectGame = {},
+                        onStartPlay = {},
+                        onBoostRam = {},
+                        onClearCache = {},
+                        onRunPingTest = {},
+                        onSelectCpuMode = {},
+                        onToggleTurboX = {},
+                        onToggleGpuBoost = {},
+                        onCycleFrameRate = {},
+                        onCycleCrosshair = {},
+                        onCycleScreenColor = {},
+                        onCycleEqPreset = {},
+                        onToggleDnd = {},
+                        onToggleNoNotif = {},
+                        onToggleAutoRotate = {},
+                        onToggleAutoBrightness = {},
+                        onToggleActiveInfo = {},
+                        onBrightnessChange = {},
+                        onVolumeChange = {},
+                        onToggleOverlayService = {},
+                        onOpenInAppOverlay = {},
+                        onAddTurboTime = {},
+                        onNavigateAddApps = {},
+                        onNavigatePermissions = {},
+                        onNavigateSettings = {},
+                        onDismissStatus = {}
+                    )
+                }
+            }
+        }
+
+        composeTestRule.mainClock.advanceTimeBy(200L)
+        composeTestRule.onNodeWithTag("tab_x_game_space").assertIsDisplayed().performClick()
+        assertTrue(openedXGameSpace)
+        composeTestRule.waitForIdle()
+        composeTestRule.mainClock.advanceTimeBy(200L)
+        composeTestRule.onNodeWithTag("turbo_x_gaming_panel_root").assertIsDisplayed()
+        composeTestRule.onNodeWithText("X-GAME SPACE", substring = true).assertIsDisplayed()
+        composeTestRule.onNodeWithTag("xgame_launch_btn").assertIsDisplayed()
     }
 
     private fun emptyPerformanceActions(
