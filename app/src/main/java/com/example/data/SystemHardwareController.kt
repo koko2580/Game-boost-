@@ -76,6 +76,16 @@ class SystemHardwareController(private val context: Context) {
             if (foregroundPkg == lastDetectedPkg) return null
             return if (foregroundPkg in settings.addedGamePackages) foregroundPkg else null
         }
+
+        fun computeTotalFreedMb(
+            availBeforeBytes: Long,
+            availAfterBytes: Long,
+            freedCacheBytes: Long
+        ): Int {
+            val deltaMb = ((availAfterBytes - availBeforeBytes) / (1024L * 1024L)).toInt().coerceAtLeast(0)
+            val cacheMb = (freedCacheBytes.coerceAtLeast(0L) / (1024L * 1024L)).toInt()
+            return deltaMb + cacheMb
+        }
     }
 
     private val activityManager by lazy(LazyThreadSafetyMode.NONE) {
@@ -350,15 +360,17 @@ class SystemHardwareController(private val context: Context) {
     private fun readCpuCoreFrequenciesMHz(coreCount: Int): List<Int> {
         val result = mutableListOf<Int>()
         for (i in 0 until coreCount) {
-            val curFile = File("/sys/devices/system/cpu/cpu$i/cpufreq/scaling_cur_freq")
-            val maxFile = File("/sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq")
-            val khz = runCatching {
-                when {
-                    curFile.canRead() -> curFile.readText().trim().toLongOrNull()
-                    maxFile.canRead() -> maxFile.readText().trim().toLongOrNull()
-                    else -> null
-                }
-            }.getOrNull()
+            val candidates = listOf(
+                File("/sys/devices/system/cpu/cpu$i/cpufreq/scaling_cur_freq"),
+                File("/sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_cur_freq"),
+                File("/sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq"),
+                File("/sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq")
+            )
+            val khz = candidates.firstNotNullOfOrNull { f ->
+                runCatching {
+                    if (f.canRead()) f.readText().trim().toLongOrNull()?.takeIf { it > 0L } else null
+                }.getOrNull()
+            }
             if (khz != null && khz > 0L) {
                 result.add((khz / 1000L).toInt())
             }
@@ -411,11 +423,16 @@ class SystemHardwareController(private val context: Context) {
             val caps = cm.getNetworkCapabilities(network) ?: return Triple("Offline", null, null)
             when {
                 caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> {
-                    val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                    val transportWifi = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        caps.transportInfo as? android.net.wifi.WifiInfo
+                    } else {
+                        null
+                    }
                     @Suppress("DEPRECATION")
-                    val info = wm?.connectionInfo
+                    val info = transportWifi
+                        ?: (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.connectionInfo
                     val linkSpeed = info?.linkSpeed?.takeIf { it > 0 }
-                    val rssi = info?.rssi?.takeIf { it > -120 && it < 0 }
+                    val rssi = info?.rssi?.takeIf { it in -119..-1 }
                     Triple("Wi-Fi", linkSpeed, rssi)
                 }
                 caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> Triple("Cellular", null, null)
@@ -484,9 +501,8 @@ class SystemHardwareController(private val context: Context) {
 
         val after = ActivityManager.MemoryInfo()
         am?.getMemoryInfo(after)
-        val deltaMb = ((after.availMem - before.availMem) / (1024L * 1024L)).toInt()
         val cacheKb = freedCacheBytes / 1024L
-        val totalFreedMb = (deltaMb + (cacheKb / 1024L).toInt()).coerceAtLeast(16)
+        val totalFreedMb = computeTotalFreedMb(before.availMem, after.availMem, freedCacheBytes)
 
         BoostResult(
             freedMb = totalFreedMb,

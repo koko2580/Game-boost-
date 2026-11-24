@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,6 +25,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -71,11 +73,24 @@ object AdUnitIds {
     const val BANNER = "ca-app-pub-5984576938417142/2994020841"
     const val INTERSTITIAL = "ca-app-pub-5984576938417142/3117455560"
     const val REWARDED = "ca-app-pub-5984576938417142/5620184189"
-    const val TEST_REWARDED = "ca-app-pub-3940256099942544/5224354917"
     const val APP_OPEN = "ca-app-pub-5984576938417142/2587838493"
+
+    const val TEST_BANNER = "ca-app-pub-3940256099942544/6300978111"
+    const val TEST_INTERSTITIAL = "ca-app-pub-3940256099942544/1033173712"
+    const val TEST_REWARDED = "ca-app-pub-3940256099942544/5224354917"
+    const val TEST_APP_OPEN = "ca-app-pub-3940256099942544/9257395921"
+
+    fun effectiveBanner(isDebug: Boolean = BuildConfig.DEBUG): String =
+        if (isDebug) TEST_BANNER else BANNER
+
+    fun effectiveInterstitial(isDebug: Boolean = BuildConfig.DEBUG): String =
+        if (isDebug) TEST_INTERSTITIAL else INTERSTITIAL
 
     fun effectiveRewarded(isDebug: Boolean = BuildConfig.DEBUG): String =
         if (isDebug) TEST_REWARDED else REWARDED
+
+    fun effectiveAppOpen(isDebug: Boolean = BuildConfig.DEBUG): String =
+        if (isDebug) TEST_APP_OPEN else APP_OPEN
 }
 
 enum class AdEndpointProbeResult {
@@ -286,7 +301,7 @@ class AdMobManager(private val appContext: Context) {
                     }
                 }
             } catch (t: Throwable) {
-                Log.e(TAG, "MobileAds init failed", t)
+                if (BuildConfig.DEBUG) Log.e(TAG, "MobileAds init failed", t)
                 mainHandler.post { _rewardedAdLoading.value = false }
             } finally {
                 isInitializing = false
@@ -445,7 +460,7 @@ class AdMobManager(private val appContext: Context) {
         isLoadingAppOpen = true
         AppOpenAd.load(
             appContext,
-            AdUnitIds.APP_OPEN,
+            AdUnitIds.effectiveAppOpen(),
             AdRequest.Builder().build(),
             object : AppOpenAd.AppOpenAdLoadCallback() {
                 override fun onAdLoaded(ad: AppOpenAd) {
@@ -539,7 +554,7 @@ class AdMobManager(private val appContext: Context) {
         isLoadingInterstitial = true
         InterstitialAd.load(
             appContext,
-            AdUnitIds.INTERSTITIAL,
+            AdUnitIds.effectiveInterstitial(),
             AdRequest.Builder().build(),
             object : InterstitialAdLoadCallback() {
                 override fun onAdLoaded(ad: InterstitialAd) {
@@ -809,10 +824,12 @@ fun isRobolectricEnvironment(): Boolean =
 
 @Composable
 fun AdMobBannerBar(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
 ) {
+    val bannerHeight = if (compact) 50.dp else 52.dp
     if (LocalInspectionMode.current || isRobolectricEnvironment()) {
-        BannerDockPlaceholder(modifier)
+        BannerDockPlaceholder(modifier, bannerHeight)
         return
     }
 
@@ -827,7 +844,7 @@ fun AdMobBannerBar(
         .collectAsState()
 
     if (!sdkReady || !hostHealthy) {
-        BannerDockPlaceholder(modifier)
+        BannerDockPlaceholder(modifier, bannerHeight)
         return
     }
 
@@ -835,21 +852,26 @@ fun AdMobBannerBar(
         modifier = modifier
             .testTag("admob_banner_container")
             .fillMaxWidth()
+            .then(if (compact) Modifier.height(50.dp) else Modifier)
             .clip(RoundedCornerShape(12.dp))
             .background(MidnightSurface.copy(alpha = 0.94f))
             .border(1.dp, CyberBorder.copy(alpha = 0.65f), RoundedCornerShape(12.dp)),
         contentAlignment = Alignment.Center
     ) {
         val widthDp = maxWidth.value.toInt().coerceIn(320, 728)
-        val adSize = remember(widthDp, context) {
-            runCatching {
-                AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(context, widthDp)
-            }.getOrDefault(AdSize.BANNER)
+        val adSize = remember(widthDp, compact, context) {
+            if (compact) {
+                AdSize.BANNER
+            } else {
+                runCatching {
+                    AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(context, widthDp)
+                }.getOrDefault(AdSize.BANNER)
+            }
         }
 
         val adView = remember(adSize) {
             AdView(context).apply {
-                adUnitId = AdUnitIds.BANNER
+                adUnitId = AdUnitIds.effectiveBanner()
                 setAdSize(adSize)
                 adListener = object : AdListener() {
                     override fun onAdLoaded() {
@@ -890,20 +912,25 @@ fun AdMobBannerBar(
             }
         }
 
-        AndroidView(
-            factory = { adView },
-            modifier = Modifier.fillMaxWidth()
-        )
+        key(adView) {
+            AndroidView(
+                factory = { adView },
+                modifier = if (compact) Modifier.wrapContentSize() else Modifier.fillMaxWidth()
+            )
+        }
     }
 }
 
 @Composable
-private fun BannerDockPlaceholder(modifier: Modifier = Modifier) {
+private fun BannerDockPlaceholder(
+    modifier: Modifier = Modifier,
+    height: androidx.compose.ui.unit.Dp = 52.dp
+) {
     Box(
         modifier = modifier
             .testTag("admob_banner_container")
             .fillMaxWidth()
-            .height(52.dp)
+            .height(height)
             .clip(RoundedCornerShape(12.dp))
             .background(MidnightSurface.copy(alpha = 0.92f))
             .border(1.dp, CyberBorder.copy(alpha = 0.7f), RoundedCornerShape(12.dp)),

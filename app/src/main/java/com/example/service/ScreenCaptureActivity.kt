@@ -28,6 +28,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.NotificationCompat
 import com.example.R
 import com.example.data.ScreenshotHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ScreenCaptureActivity : ComponentActivity() {
 
@@ -40,10 +47,14 @@ class ScreenCaptureActivity : ComponentActivity() {
                 putExtra(ScreenshotProjectionService.EXTRA_RESULT_CODE, result.resultCode)
                 putExtra(ScreenshotProjectionService.EXTRA_RESULT_DATA, data)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(serviceIntent)
+                } else {
+                    startService(serviceIntent)
+                }
+            }.onFailure {
+                Toast.makeText(this, "Unable to start capture service", Toast.LENGTH_SHORT).show()
             }
         } else {
             Toast.makeText(this, "Screenshot permission cancelled", Toast.LENGTH_SHORT).show()
@@ -53,8 +64,18 @@ class ScreenCaptureActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        captureLauncher.launch(mgr.createScreenCaptureIntent())
+        val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+        if (mgr == null) {
+            Toast.makeText(this, "Screen capture unavailable", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+        runCatching {
+            captureLauncher.launch(mgr.createScreenCaptureIntent())
+        }.onFailure {
+            Toast.makeText(this, "Unable to request screen capture", Toast.LENGTH_SHORT).show()
+            finish()
+        }
     }
 }
 
@@ -65,19 +86,30 @@ class ScreenshotProjectionService : Service() {
         const val EXTRA_RESULT_DATA = "result_data"
         private const val CHANNEL_ID = "turbo_screenshot_channel"
         private const val NOTIF_ID = 7002
+        private const val CAPTURE_TIMEOUT_MS = 8_000L
     }
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var mediaProjection: MediaProjection? = null
+    private var projectionCallback: MediaProjection.Callback? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
+    private var timeoutRunnable: Runnable? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createChannel()
         val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-        } else {
-            startForeground(NOTIF_ID, notification)
+        val foregroundStarted = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+            } else {
+                startForeground(NOTIF_ID, notification)
+            }
+        }.isSuccess
+        if (!foregroundStarted) {
+            stopAndClearForeground()
+            return START_NOT_STICKY
         }
 
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
@@ -90,14 +122,14 @@ class ScreenshotProjectionService : Service() {
         }
 
         if (resultCode != Activity.RESULT_OK || resultData == null) {
-            stopSelf()
+            stopAndClearForeground()
             return START_NOT_STICKY
         }
 
-        val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        val projection = mgr.getMediaProjection(resultCode, resultData)
+        val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+        val projection = mgr?.getMediaProjection(resultCode, resultData)
         if (projection == null) {
-            stopSelf()
+            stopAndClearForeground()
             return START_NOT_STICKY
         }
         mediaProjection = projection
@@ -118,56 +150,81 @@ class ScreenshotProjectionService : Service() {
             height = metrics.heightPixels.coerceAtLeast(720)
         }
 
-        val handler = Handler(Looper.getMainLooper())
-        projection.registerCallback(object : MediaProjection.Callback() {
+        val captured = AtomicBoolean(false)
+        val callback = object : MediaProjection.Callback() {
             override fun onStop() {
-                cleanup()
+                if (captured.compareAndSet(false, true)) {
+                    stopAndClearForeground()
+                } else {
+                    cleanup()
+                }
             }
-        }, handler)
+        }
+        projectionCallback = callback
+        projection.registerCallback(callback, mainHandler)
+
+        val timeout = Runnable {
+            if (captured.compareAndSet(false, true)) {
+                Toast.makeText(applicationContext, "Screenshot timed out", Toast.LENGTH_SHORT).show()
+                stopAndClearForeground()
+            }
+        }
+        timeoutRunnable = timeout
+        mainHandler.postDelayed(timeout, CAPTURE_TIMEOUT_MS)
 
         val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         imageReader = reader
-        var captured = false
 
         reader.setOnImageAvailableListener({ r ->
-            if (captured) return@setOnImageAvailableListener
-            val image = r.acquireLatestImage() ?: return@setOnImageAvailableListener
-            captured = true
-            try {
-                runCatching {
-                    val plane = image.planes[0]
-                    val buffer = plane.buffer
-                    val pixelStride = plane.pixelStride
-                    val rowStride = plane.rowStride
-                    val rowPadding = (rowStride - pixelStride * width).coerceAtLeast(0)
-                    val fullBitmap = Bitmap.createBitmap(
-                        width + rowPadding / pixelStride,
-                        height,
-                        Bitmap.Config.ARGB_8888
-                    )
-                    var cropped: Bitmap? = null
-                    try {
-                        fullBitmap.copyPixelsFromBuffer(buffer)
-                        cropped = Bitmap.createBitmap(fullBitmap, 0, 0, width, height)
-                        val savedPath = ScreenshotHelper.saveBitmapToGallery(applicationContext, cropped)
-                        handler.post {
-                            val msg = if (savedPath != null) "Saved: $savedPath" else "Failed to save screenshot"
-                            Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
-                        }
-                    } finally {
-                        if (!fullBitmap.isRecycled) fullBitmap.recycle()
-                        if (cropped != null && !cropped.isRecycled) cropped.recycle()
+            if (!captured.compareAndSet(false, true)) return@setOnImageAvailableListener
+            val image = r.acquireLatestImage()
+            if (image == null) {
+                captured.set(false)
+                return@setOnImageAvailableListener
+            }
+            timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+            timeoutRunnable = null
+
+            val croppedBitmap = runCatching {
+                val plane = image.planes[0]
+                val buffer = plane.buffer
+                val pixelStride = plane.pixelStride
+                val rowStride = plane.rowStride
+                val rowPadding = (rowStride - pixelStride * width).coerceAtLeast(0)
+                val fullBitmap = Bitmap.createBitmap(
+                    width + rowPadding / pixelStride,
+                    height,
+                    Bitmap.Config.ARGB_8888
+                )
+                try {
+                    fullBitmap.copyPixelsFromBuffer(buffer)
+                    Bitmap.createBitmap(fullBitmap, 0, 0, width, height)
+                } finally {
+                    if (!fullBitmap.isRecycled) fullBitmap.recycle()
+                }
+            }.getOrNull()
+            runCatching { image.close() }
+            cleanup()
+
+            serviceScope.launch {
+                val savedPath = try {
+                    croppedBitmap?.let { ScreenshotHelper.saveBitmapToGallery(applicationContext, it) }
+                } finally {
+                    if (croppedBitmap != null && !croppedBitmap.isRecycled) {
+                        croppedBitmap.recycle()
                     }
                 }
-            } finally {
-                runCatching { image.close() }
-                cleanup()
-                stopSelf()
+                withContext(Dispatchers.Main) {
+                    val msg = if (savedPath != null) "Saved: $savedPath" else "Failed to save screenshot"
+                    Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
+                    stopAndClearForeground()
+                }
             }
-        }, handler)
+        }, mainHandler)
 
         // Small delay so the permission dialog finishes fading out before capturing
-        handler.postDelayed({
+        mainHandler.postDelayed({
+            if (captured.get()) return@postDelayed
             runCatching {
                 virtualDisplay = projection.createVirtualDisplay(
                     "TurboGameXCapture",
@@ -177,21 +234,33 @@ class ScreenshotProjectionService : Service() {
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                     reader.surface,
                     null,
-                    handler
+                    mainHandler
                 )
             }.onFailure {
-                cleanup()
-                stopSelf()
+                if (captured.compareAndSet(false, true)) {
+                    stopAndClearForeground()
+                }
             }
         }, 280L)
 
         return START_NOT_STICKY
     }
 
+    private fun stopAndClearForeground() {
+        timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+        timeoutRunnable = null
+        cleanup()
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+        stopSelf()
+    }
+
     private fun cleanup() {
         runCatching { virtualDisplay?.release() }
+        runCatching { imageReader?.setOnImageAvailableListener(null, null) }
         runCatching { imageReader?.close() }
+        projectionCallback?.let { cb -> runCatching { mediaProjection?.unregisterCallback(cb) } }
         runCatching { mediaProjection?.stop() }
+        projectionCallback = null
         virtualDisplay = null
         imageReader = null
         mediaProjection = null
@@ -213,8 +282,11 @@ class ScreenshotProjectionService : Service() {
             .build()
 
     override fun onDestroy() {
-        super.onDestroy()
+        timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+        timeoutRunnable = null
         cleanup()
+        serviceScope.cancel()
+        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

@@ -1,5 +1,6 @@
 package com.example
 
+import com.example.ads.AdUnitIds
 import com.example.data.GameTurboSettings
 import com.example.data.SystemHardwareController
 import org.junit.Assert.assertEquals
@@ -141,4 +142,42 @@ class ExampleUnitTest {
             )
         )
     }
+
+    @Test
+    fun `computeTotalFreedMb reports exact reclaimed memory without fake floor`() {
+        val zeroDelta = SystemHardwareController.computeTotalFreedMb(
+            availBeforeBytes = 1_000L * 1024L * 1024L,
+            availAfterBytes = 1_000L * 1024L * 1024L,
+            freedCacheBytes = 512L * 1024L
+        )
+        assertEquals(0, zeroDelta)
+
+        val negativeDeltaPlusCache = SystemHardwareController.computeTotalFreedMb(
+            availBeforeBytes = 1_200L * 1024L * 1024L,
+            availAfterBytes = 1_150L * 1024L * 1024L,
+            freedCacheBytes = 4L * 1024L * 1024L
+        )
+        assertEquals(4, negativeDeltaPlusCache)
+
+        val positiveDeltaPlusCache = SystemHardwareController.computeTotalFreedMb(
+            availBeforeBytes = 1_000L * 1024L * 1024L,
+            availAfterBytes = 1_042L * 1024L * 1024L,
+            freedCacheBytes = 8L * 1024L * 1024L
+        )
+        assertEquals(50, positiveDeltaPlusCache)
+    }
+
+    @Test
+    fun `adUnitIds route to Google test units in debug and production units in release`() {
+        assertEquals(AdUnitIds.TEST_BANNER, AdUnitIds.effectiveBanner(isDebug = true))
+        assertEquals(AdUnitIds.TEST_INTERSTITIAL, AdUnitIds.effectiveInterstitial(isDebug = true))
+        assertEquals(AdUnitIds.TEST_REWARDED, AdUnitIds.effectiveRewarded(isDebug = true))
+        assertEquals(AdUnitIds.TEST_APP_OPEN, AdUnitIds.effectiveAppOpen(isDebug = true))
+
+        assertEquals(AdUnitIds.BANNER, AdUnitIds.effectiveBanner(isDebug = false))
+        assertEquals(AdUnitIds.INTERSTITIAL, AdUnitIds.effectiveInterstitial(isDebug = false))
+        assertEquals(AdUnitIds.REWARDED, AdUnitIds.effectiveRewarded(isDebug = false))
+        assertEquals(AdUnitIds.APP_OPEN, AdUnitIds.effectiveAppOpen(isDebug = false))
+    }
 }
+

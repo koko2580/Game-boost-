@@ -11,6 +11,8 @@ import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
+import android.provider.Settings
 import android.view.Choreographer
 import android.view.Gravity
 import android.view.KeyEvent
@@ -152,10 +154,23 @@ class GameOverlayService : Service() {
     @Volatile
     private var latestSettings: GameTurboSettings = GameTurboSettings()
     private var hudPassThroughParams: WindowManager.LayoutParams? = null
+    private val powerManager: PowerManager? by lazy(LazyThreadSafetyMode.NONE) {
+        getSystemService(Context.POWER_SERVICE) as? PowerManager
+    }
+    @Volatile
+    private var choreographerPausedForScreenOff = false
+    @Volatile
+    private var turboAppliedDnd = false
+    @Volatile
+    private var turboMutedNotifications = false
 
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (!isRunning) return
+            if (powerManager?.isInteractive == false) {
+                choreographerPausedForScreenOff = true
+                return
+            }
             if (lastFrameNs > 0L) {
                 val deltaNs = (frameTimeNanos - lastFrameNs).coerceAtLeast(1_000_000L)
                 liveFrameMs = deltaNs / 1_000_000f
@@ -184,28 +199,39 @@ class GameOverlayService : Service() {
 
         createNotificationChannel()
         val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
         }
 
-        if (networkMonitor?.refreshNow() != true) {
+        if (!Settings.canDrawOverlays(this) || networkMonitor?.refreshNow() != true) {
+            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
             stopSelf()
             return
         }
 
-        attachOverlayWindows()
+        if (!attachOverlayWindows()) {
+            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+            stopSelf()
+            return
+        }
         Choreographer.getInstance().postFrameCallback(frameCallback)
         startTelemetryUpdates()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP || networkMonitor?.refreshNow() != true) {
+        if (intent?.action == ACTION_STOP ||
+            !Settings.canDrawOverlays(this) ||
+            networkMonitor?.refreshNow() != true
+        ) {
+            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
             stopSelf()
             return START_NOT_STICKY
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun startTelemetryUpdates() {
@@ -242,6 +268,14 @@ class GameOverlayService : Service() {
                 }
             }
             while (true) {
+                if (powerManager?.isInteractive == false) {
+                    delay(2500L)
+                    continue
+                }
+                if (choreographerPausedForScreenOff) {
+                    choreographerPausedForScreenOff = false
+                    Choreographer.getInstance().postFrameCallback(frameCallback)
+                }
                 val settings = latestSettings
                 val prevPing = telemetryFlow.value.pingMs
                 val prevJitter = telemetryFlow.value.pingJitterMs
@@ -294,10 +328,13 @@ class GameOverlayService : Service() {
                 if (triggeredGame != null) {
                     lastAutoDetectedGamePkg = triggeredGame
                     if (settings.autoDndOnEnter || settings.dndMode) {
-                        hardware.setDoNotDisturb(true)
+                        if (hardware.setDoNotDisturb(true)) {
+                            turboAppliedDnd = true
+                        }
                     }
                     if (settings.muteNotificationsInGame || settings.notificationMuteMode) {
                         hardware.audioEnhancer.setNotificationMuted(true)
+                        turboMutedNotifications = true
                     }
                     hardware.performanceEngine.applyProfile(
                         settings = settings,
@@ -323,7 +360,8 @@ class GameOverlayService : Service() {
         }
     }
 
-    private fun attachOverlayWindows() {
+    private fun attachOverlayWindows(): Boolean {
+        if (!Settings.canDrawOverlays(this)) return false
         val owner = ServiceLifecycleOwner()
         owner.performRestore()
         owner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
@@ -356,7 +394,11 @@ class GameOverlayService : Service() {
         hudPassThroughView = hudView
         val hudParams = createHudPassThroughParams()
         hudPassThroughParams = hudParams
-        windowManager.addView(hudView, hudParams)
+        val hudAdded = runCatching { windowManager.addView(hudView, hudParams) }.isSuccess
+        if (!hudAdded) {
+            hudPassThroughView = null
+            return false
+        }
 
         // 2. Interactive Handle / Expandable Half-Screen Control Panel
         val ctrlView = ComposeView(this).apply {
@@ -414,7 +456,12 @@ class GameOverlayService : Service() {
         val (_, supportedRates) = hardware.readDisplayRefreshInfo()
         hardware.performanceEngine.applyToOverlayWindowParams(params, latestSettings, supportedRates, ctrlView)
         controlLayoutParams = params
-        windowManager.addView(ctrlView, params)
+        val ctrlAdded = runCatching { windowManager.addView(ctrlView, params) }.isSuccess
+        if (!ctrlAdded) {
+            controlView = null
+            return false
+        }
+        return true
     }
 
     private fun dragHandleBy(dx: Float, dy: Float) {
@@ -695,12 +742,14 @@ class GameOverlayService : Service() {
         onToggleNoNotifications = {
             val next = !settings.notificationMuteMode
             hardware.audioEnhancer.setNotificationMuted(next)
+            turboMutedNotifications = next
             serviceScope.launch { repo.updateSettings { it.copy(notificationMuteMode = next) } }
             showTransientStatus(if (next) "Notifications Muted" else "Notifications Active")
         },
         onToggleDnd = {
             val next = !settings.dndMode
             if (hardware.setDoNotDisturb(next)) {
+                turboAppliedDnd = next
                 serviceScope.launch { repo.updateSettings { it.copy(dndMode = next) } }
                 showTransientStatus(if (next) "DND On" else "DND Off")
             } else {
@@ -713,11 +762,13 @@ class GameOverlayService : Service() {
         },
         onScreenshotInfo = {
             toggleExpanded(false, settings.controlPanelLayout)
-            startActivity(
-                Intent(this, ScreenCaptureActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            )
+            runCatching {
+                startActivity(
+                    Intent(this, ScreenCaptureActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                )
+            }
         },
         onQuickApp = { pkgs, url ->
             toggleExpanded(false, settings.controlPanelLayout)
@@ -730,7 +781,7 @@ class GameOverlayService : Service() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             putExtra(EXTRA_START_ROUTE, route)
         }
-        startActivity(intent)
+        runCatching { startActivity(intent) }
     }
 
     private fun createNotificationChannel() {
@@ -777,19 +828,28 @@ class GameOverlayService : Service() {
         Choreographer.getInstance().removeFrameCallback(frameCallback)
         telemetryJob?.cancel()
         serviceScope.cancel()
-        // Restore system states cleanly on exit
+        // Restore only system states changed by this overlay session
         hardware.performanceEngine.closeSession()
-        hardware.audioEnhancer.setNotificationMuted(false)
+        if (turboMutedNotifications) {
+            hardware.audioEnhancer.setNotificationMuted(false)
+            turboMutedNotifications = false
+        }
         hardware.audioEnhancer.releaseEffects()
-        hardware.setDoNotDisturb(false)
+        if (turboAppliedDnd) {
+            hardware.setDoNotDisturb(false)
+            turboAppliedDnd = false
+        }
         controlView?.let { runCatching { windowManager.removeView(it) } }
+        controlView = null
         hudPassThroughView?.let { runCatching { windowManager.removeView(it) } }
+        hudPassThroughView = null
         lifecycleOwner?.let {
             it.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
             it.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
             it.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
             it.viewModelStore.clear()
         }
+        lifecycleOwner = null
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

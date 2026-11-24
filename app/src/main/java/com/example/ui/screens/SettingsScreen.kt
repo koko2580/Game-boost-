@@ -23,16 +23,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.mandatorySystemGestures
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -141,11 +137,7 @@ fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(ObsidianVoid)
-            .windowInsetsPadding(
-                WindowInsets.safeDrawing.union(
-                    WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom)
-                )
-            )
+            .windowInsetsPadding(WindowInsets.safeDrawing)
     ) {
         val isWide = maxWidth >= 520.dp
         val isCompactHeight = maxHeight < 480.dp
@@ -178,26 +170,43 @@ fun SettingsScreen(
                     }
                 }
 
-                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    // Left Category Rail
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(
+                            start = if (isCompactHeight) 10.dp else 14.dp,
+                            end = if (isCompactHeight) 10.dp else 16.dp,
+                            top = if (isCompactHeight) 8.dp else 12.dp,
+                            bottom = if (isCompactHeight) 8.dp else 12.dp
+                        ),
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 12.dp else 16.dp)
+                ) {
+                    // Left Category Rail inside framed cyber panel
                     LazyColumn(
                         state = railListState,
-                        contentPadding = PaddingValues(bottom = if (isCompactHeight) 24.dp else 12.dp),
+                        contentPadding = PaddingValues(vertical = 6.dp, horizontal = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                         modifier = Modifier
-                            .width(if (isCompactHeight) 168.dp else 228.dp)
+                            .testTag("settings_category_rail")
+                            .width(if (isCompactHeight) 172.dp else 224.dp)
                             .fillMaxHeight()
-                            .background(Color(0xFF0B0F1A))
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF0B101D))
+                            .border(1.dp, CyberBorder.copy(alpha = 0.72f), RoundedCornerShape(14.dp))
                     ) {
                         itemsIndexed(SettingsCategory.entries) { _, category ->
                             val isSelected = category == selectedCategory
+                            val itemShape = RoundedCornerShape(10.dp)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("settings_cat_${category.name}")
+                                    .clip(itemShape)
                                     .background(
                                         if (isSelected) {
                                             Brush.horizontalGradient(
-                                                listOf(CyberSlate, accent.copy(alpha = 0.30f))
+                                                listOf(CyberSlate.copy(alpha = 0.92f), accent.copy(alpha = 0.28f))
                                             )
                                         } else {
                                             Brush.horizontalGradient(
@@ -205,14 +214,32 @@ fun SettingsScreen(
                                             )
                                         }
                                     )
+                                    .then(
+                                        if (isSelected) {
+                                            Modifier.border(1.dp, accent.copy(alpha = 0.65f), itemShape)
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
                                     .clickable { selectedCategory = category }
-                                    .height(if (isCompactHeight) 36.dp else 54.dp),
+                                    .height(if (isCompactHeight) 38.dp else 48.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                if (isSelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(3.5.dp)
+                                            .fillMaxHeight()
+                                            .background(accent)
+                                    )
+                                }
                                 Text(
                                     text = category.title,
                                     style = if (isCompactHeight) {
-                                        MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp)
+                                        MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 13.sp,
+                                            lineHeight = 16.sp
+                                        )
                                     } else {
                                         MaterialTheme.typography.bodyLarge
                                     },
@@ -222,16 +249,8 @@ fun SettingsScreen(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier
                                         .weight(1f)
-                                        .padding(horizontal = if (isCompactHeight) 12.dp else 16.dp)
+                                        .padding(horizontal = if (isCompactHeight) 10.dp else 14.dp)
                                 )
-                                if (isSelected) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(4.dp)
-                                            .fillMaxHeight()
-                                            .background(accent)
-                                    )
-                                }
                             }
                         }
                     }
@@ -241,38 +260,44 @@ fun SettingsScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .background(ObsidianVoid)
                             .verticalScroll(rememberScrollState(), flingBehavior = turboFling)
                             .padding(
-                                start = if (isCompactHeight) 18.dp else 24.dp,
-                                end = if (isCompactHeight) 18.dp else 24.dp,
-                                top = if (isCompactHeight) 10.dp else 16.dp,
-                                bottom = if (isCompactHeight) 32.dp else 24.dp
-                            )
+                                start = 4.dp,
+                                end = 4.dp,
+                                top = 2.dp,
+                                bottom = if (isCompactHeight) 16.dp else 18.dp
+                            ),
+                        contentAlignment = Alignment.TopCenter
                     ) {
-                        AnimatedContent(
-                            targetState = selectedCategory,
-                            transitionSpec = {
-                                (fadeIn(tween(200, easing = FastOutSlowInEasing)) +
-                                    slideInVertically(tween(200)) { it / 16 }) togetherWith
-                                    fadeOut(tween(140))
-                            },
-                            label = "settings_detail_wide"
-                        ) { cat ->
-                            SettingsCategoryDetail(
-                                category = cat,
-                                settings = settings,
-                                telemetry = telemetry,
-                                performanceStatus = performanceStatus,
-                                permissions = permissions,
-                                securityAudit = securityAudit,
-                                performanceActions = performanceActions,
-                                onUpdateSettings = onUpdateSettings,
-                                onBoostRam = onBoostRam,
-                                onClearCache = onClearCache,
-                                onSelectWallpaperTheme = onSelectWallpaperTheme,
-                                onOpenPermissions = onOpenPermissions
-                            )
+                        Box(
+                            modifier = Modifier
+                                .widthIn(max = 760.dp)
+                                .fillMaxWidth()
+                        ) {
+                            AnimatedContent(
+                                targetState = selectedCategory,
+                                transitionSpec = {
+                                    (fadeIn(tween(200, easing = FastOutSlowInEasing)) +
+                                        slideInVertically(tween(200)) { it / 16 }) togetherWith
+                                        fadeOut(tween(140))
+                                },
+                                label = "settings_detail_wide"
+                            ) { cat ->
+                                SettingsCategoryDetail(
+                                    category = cat,
+                                    settings = settings,
+                                    telemetry = telemetry,
+                                    performanceStatus = performanceStatus,
+                                    permissions = permissions,
+                                    securityAudit = securityAudit,
+                                    performanceActions = performanceActions,
+                                    onUpdateSettings = onUpdateSettings,
+                                    onBoostRam = onBoostRam,
+                                    onClearCache = onClearCache,
+                                    onSelectWallpaperTheme = onSelectWallpaperTheme,
+                                    onOpenPermissions = onOpenPermissions
+                                )
+                            }
                         }
                     }
                 }

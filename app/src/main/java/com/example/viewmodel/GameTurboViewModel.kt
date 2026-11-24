@@ -1609,11 +1609,15 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
             }
         } else {
             val ctx = getApplication<Application>()
-            ctx.startActivity(
-                Intent(ctx, ScreenCaptureActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            )
+            runCatching {
+                ctx.startActivity(
+                    Intent(ctx, ScreenCaptureActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                )
+            }.onFailure {
+                showStatus("Screen capture permission cannot be launched from here")
+            }
         }
     }
 

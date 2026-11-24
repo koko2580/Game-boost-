@@ -34,17 +34,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.mandatorySystemGestures
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -280,11 +276,7 @@ fun LauncherHomeScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(
-                    WindowInsets.safeDrawing.union(
-                        WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom)
-                    )
-                )
+                .windowInsetsPadding(WindowInsets.safeDrawing)
         ) {
             val isWide = maxWidth >= 520.dp
             val isNarrowPortrait = maxWidth < 395.dp
@@ -298,8 +290,8 @@ fun LauncherHomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = if (isCompactHeight) 14.dp else 16.dp,
-                            vertical = if (isCompactHeight) 4.dp else 10.dp
+                            horizontal = if (isCompactHeight) 12.dp else 16.dp,
+                            vertical = if (isCompactHeight) 2.dp else 10.dp
                         ),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -482,7 +474,7 @@ fun LauncherHomeScreen(
                                     // Left Game Dock
                                     Column(
                                         modifier = Modifier
-                                            .width(if (isCompactHeight) 186.dp else 248.dp)
+                                            .width(if (isCompactHeight) 196.dp else 248.dp)
                                             .fillMaxHeight(),
                                         verticalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -497,7 +489,7 @@ fun LauncherHomeScreen(
                                             onAddGames = onNavigateAddApps,
                                             modifier = Modifier.weight(1f)
                                         )
-                                        Spacer(modifier = Modifier.height(if (isCompactHeight) 5.dp else 8.dp))
+                                        Spacer(modifier = Modifier.height(if (isCompactHeight) 4.dp else 8.dp))
                                         AddGameSquareButton(
                                             label = "Add Games",
                                             compact = isCompactHeight,
@@ -752,7 +744,7 @@ fun LauncherHomeScreen(
                     }
                 }
 
-                // DEDICATED BOTTOM-ANCHORED BANNER AD DOCK (Extra bottom clearance prevents gesture pill overlap)
+                // DEDICATED BOTTOM-ANCHORED BANNER AD DOCK
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -760,14 +752,15 @@ fun LauncherHomeScreen(
                             start = 16.dp,
                             end = 16.dp,
                             top = if (isCompactHeight) 2.dp else 4.dp,
-                            bottom = if (isCompactHeight) 10.dp else 4.dp
+                            bottom = if (isCompactHeight) 2.dp else 4.dp
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     AdMobBannerBar(
                         modifier = Modifier
                             .widthIn(max = 520.dp)
-                            .fillMaxWidth()
+                            .fillMaxWidth(),
+                        compact = isCompactHeight
                     )
                 }
             }
@@ -834,6 +827,7 @@ private fun CockpitHeroCard(
     )
     Column(
         modifier = modifier
+            .testTag("cockpit_hero_card")
             .clip(heroShape)
             .background(
                 Brush.verticalGradient(
@@ -856,9 +850,9 @@ private fun CockpitHeroCard(
             )
             .padding(
                 horizontal = if (compact) 12.dp else 16.dp,
-                vertical = if (compact) 7.dp else 16.dp
+                vertical = if (compact) 5.dp else 16.dp
             ),
-        verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 14.dp)
+        verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 14.dp)
     ) {
         // 1. Selected Game Profile Header + Quick Boost Chip
         Row(
@@ -875,7 +869,7 @@ private fun CockpitHeroCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(if (compact) 30.dp else 44.dp)
+                        .size(if (compact) 28.dp else 44.dp)
                         .clip(RoundedCornerShape(if (compact) 8.dp else 12.dp))
                         .background(CyberElevated)
                         .border(
@@ -898,7 +892,7 @@ private fun CockpitHeroCard(
                             imageVector = Icons.Rounded.SportsEsports,
                             contentDescription = "Add Game",
                             tint = animatedAccent,
-                            modifier = Modifier.size(if (compact) 17.dp else 24.dp)
+                            modifier = Modifier.size(if (compact) 16.dp else 24.dp)
                         )
                     }
                 }
@@ -908,7 +902,8 @@ private fun CockpitHeroCard(
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontFamily = RajdhaniFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = if (compact) 14.sp else 18.sp
+                            fontSize = if (compact) 14.sp else 18.sp,
+                            lineHeight = if (compact) 16.sp else 22.sp
                         ),
                         color = TextPrimary,
                         maxLines = 1,
@@ -921,7 +916,8 @@ private fun CockpitHeroCard(
                             "Tap + to add a game"
                         },
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = if (compact) 10.sp else 11.sp
+                            fontSize = if (compact) 10.sp else 11.sp,
+                            lineHeight = if (compact) 12.sp else 14.sp
                         ),
                         color = TextSecondary,
                         maxLines = 1,
@@ -939,7 +935,7 @@ private fun CockpitHeroCard(
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
                 modifier = Modifier
                     .testTag("hero_quick_boost_btn")
-                    .height(if (compact) 32.dp else 48.dp)
+                    .height(if (compact) 30.dp else 48.dp)
                     .clip(oneTapShape)
                     .background(
                         Brush.horizontalGradient(
@@ -961,7 +957,8 @@ private fun CockpitHeroCard(
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.8.sp
+                        letterSpacing = 0.8.sp,
+                        lineHeight = 14.sp
                     ),
                     color = TextPrimary
                 )
@@ -991,7 +988,7 @@ private fun CockpitHeroCard(
                 animatePulse = settings.homeAnimation,
                 modifier = Modifier.size(
                     when {
-                        compact -> 76.dp
+                        compact -> 70.dp
                         narrowPortrait -> 124.dp
                         else -> 144.dp
                     }
@@ -1000,7 +997,7 @@ private fun CockpitHeroCard(
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 11.dp)
+                verticalArrangement = Arrangement.spacedBy(if (compact) 3.dp else 11.dp)
             ) {
                 HeroTelemetryBarRow(
                     label = "CPU CLOCK",
@@ -1050,7 +1047,7 @@ private fun CockpitHeroCard(
                     CyberBorder.copy(alpha = 0.65f),
                     RoundedCornerShape(if (compact) 10.dp else 14.dp)
                 )
-                .padding(if (compact) 2.5.dp else 4.dp),
+                .padding(if (compact) 2.dp else 4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             listOf(
@@ -1073,7 +1070,7 @@ private fun CockpitHeroCard(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(if (compact) 30.dp else 40.dp)
+                        .height(if (compact) 28.dp else 40.dp)
                         .clip(RoundedCornerShape(if (compact) 8.dp else 10.dp))
                         .background(bg)
                         .border(1.dp, border, RoundedCornerShape(if (compact) 8.dp else 10.dp))
@@ -1086,7 +1083,8 @@ private fun CockpitHeroCard(
                             fontFamily = RajdhaniFontFamily,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.9.sp,
-                            fontSize = if (compact) 11.sp else 12.sp
+                            fontSize = if (compact) 11.sp else 12.sp,
+                            lineHeight = if (compact) 12.sp else 15.sp
                         ),
                         color = if (selected) pillColor else TextMuted,
                         maxLines = 1
@@ -1105,7 +1103,7 @@ private fun HeroTelemetryBarRow(
     barColor: Color,
     compact: Boolean = false
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(if (compact) 1.5.dp else 4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1116,7 +1114,8 @@ private fun HeroTelemetryBarRow(
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontFamily = RajdhaniFontFamily,
                     letterSpacing = 0.8.sp,
-                    fontSize = if (compact) 9.sp else 10.sp
+                    fontSize = if (compact) 9.sp else 10.sp,
+                    lineHeight = if (compact) 11.sp else 13.sp
                 ),
                 color = TextMuted
             )
@@ -1125,7 +1124,8 @@ private fun HeroTelemetryBarRow(
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontFamily = RajdhaniFontFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = if (compact) 11.sp else 12.sp
+                    fontSize = if (compact) 11.sp else 12.sp,
+                    lineHeight = if (compact) 13.sp else 15.sp
                 ),
                 color = TextPrimary
             )
@@ -1136,7 +1136,7 @@ private fun HeroTelemetryBarRow(
             trackColor = CyberSlate,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (compact) 5.dp else 6.dp)
+                .height(if (compact) 4.dp else 6.dp)
                 .clip(RoundedCornerShape(3.dp))
         )
     }
@@ -1159,7 +1159,7 @@ private fun HeroMiniBadge(
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
             .padding(
                 horizontal = if (compact) 6.dp else 8.dp,
-                vertical = if (compact) 3.dp else 6.dp
+                vertical = if (compact) 2.5.dp else 6.dp
             ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
@@ -1175,7 +1175,8 @@ private fun HeroMiniBadge(
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(
                 fontFamily = RajdhaniFontFamily,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                lineHeight = if (compact) 12.sp else 15.sp
             ),
             color = TextPrimary,
             maxLines = 1
@@ -1399,10 +1400,15 @@ private fun GameDockList(
         }
     } else {
         LazyColumn(
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier
+                .testTag("game_dock_list")
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(MidnightSurface.copy(alpha = 0.55f))
+                .border(1.dp, CyberBorder.copy(alpha = 0.55f), RoundedCornerShape(14.dp)),
             verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 8.dp),
             flingBehavior = rememberTurboFlingBehavior(),
-            contentPadding = PaddingValues(vertical = if (compact) 2.dp else 4.dp)
+            contentPadding = PaddingValues(if (compact) 5.dp else 6.dp)
         ) {
             items(games, key = { it.packageName }) { game ->
                 val isSelected = game.packageName == selectedPackage
@@ -1415,7 +1421,7 @@ private fun GameDockList(
                     }
                 }
                 val bgColor by animateColorAsState(
-                    targetValue = if (isSelected) accentColor.copy(alpha = 0.16f) else MidnightSurface.copy(alpha = 0.78f),
+                    targetValue = if (isSelected) accentColor.copy(alpha = 0.16f) else MidnightSurface.copy(alpha = 0.82f),
                     animationSpec = tween(200),
                     label = "dock_bg"
                 )
@@ -1428,33 +1434,33 @@ private fun GameDockList(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(if (compact) 11.dp else 14.dp))
+                        .clip(RoundedCornerShape(if (compact) 10.dp else 14.dp))
                         .background(bgColor)
                         .border(
                             if (isSelected) 1.5.dp else 1.dp,
                             borderColor,
-                            RoundedCornerShape(if (compact) 11.dp else 14.dp)
+                            RoundedCornerShape(if (compact) 10.dp else 14.dp)
                         )
                         .clickable { onSelectGame(game.packageName) }
-                        .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 6.dp else 10.dp),
+                        .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 5.dp else 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)
                 ) {
                     val resolvedDockIcon = iconBitmap
-                    val iconSize = if (compact) 30.dp else 40.dp
+                    val iconSize = if (compact) 28.dp else 40.dp
                     if (resolvedDockIcon != null) {
                         Image(
                             bitmap = resolvedDockIcon,
                             contentDescription = game.appName,
                             modifier = Modifier
                                 .size(iconSize)
-                                .clip(RoundedCornerShape(if (compact) 8.dp else 10.dp))
+                                .clip(RoundedCornerShape(if (compact) 7.dp else 10.dp))
                         )
                     } else {
                         Box(
                             modifier = Modifier
                                 .size(iconSize)
-                                .clip(RoundedCornerShape(if (compact) 8.dp else 10.dp))
+                                .clip(RoundedCornerShape(if (compact) 7.dp else 10.dp))
                                 .background(CyberElevated),
                             contentAlignment = Alignment.Center
                         ) {
@@ -1462,7 +1468,7 @@ private fun GameDockList(
                                 Icons.Rounded.SportsEsports,
                                 contentDescription = null,
                                 tint = TextPrimary,
-                                modifier = Modifier.size(if (compact) 17.dp else 22.dp)
+                                modifier = Modifier.size(if (compact) 16.dp else 22.dp)
                             )
                         }
                     }
@@ -1471,7 +1477,8 @@ private fun GameDockList(
                             text = game.appName,
                             style = if (compact) MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp
+                                fontSize = 12.5.sp,
+                                lineHeight = 14.sp
                             ) else MaterialTheme.typography.titleMedium,
                             color = TextPrimary,
                             maxLines = 1,
@@ -1480,7 +1487,8 @@ private fun GameDockList(
                         Text(
                             text = "v${game.versionName}",
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = if (compact) 10.sp else 11.sp
+                                fontSize = if (compact) 10.sp else 11.sp,
+                                lineHeight = if (compact) 11.sp else 14.sp
                             ),
                             color = TextMuted,
                             maxLines = 1,
@@ -1610,8 +1618,8 @@ private fun StartPlayButtonCluster(
             modifier = Modifier
                 .scale(buttonScale)
                 .testTag("start_play_button")
-                .height(52.dp)
-                .widthIn(min = if (compact) 182.dp else 220.dp, max = if (compact) 216.dp else 264.dp)
+                .height(if (compact) 48.dp else 52.dp)
+                .widthIn(min = if (compact) 192.dp else 220.dp, max = if (compact) 224.dp else 264.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(
                     Brush.horizontalGradient(
@@ -1664,20 +1672,24 @@ private fun StartPlayButtonCluster(
             color = if (hasTime) EmeraldBright else CyberAmber,
             textAlign = TextAlign.Center,
             maxLines = 2,
-            modifier = Modifier.widthIn(max = if (compact) 210.dp else 280.dp)
+            modifier = Modifier.widthIn(max = if (compact) 220.dp else 280.dp)
         )
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.Center,
             modifier = Modifier
                 .testTag("open_super_perf_btn")
                 .minimumInteractiveComponentSize()
-                .widthIn(min = if (compact) 182.dp else 210.dp, max = if (compact) 216.dp else 264.dp)
+                .widthIn(min = if (compact) 192.dp else 210.dp, max = if (compact) 224.dp else 264.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(CyberElevated.copy(alpha = 0.9f))
-                .border(1.dp, ElectricCyan.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(CyberElevated.copy(alpha = 0.95f), ElectricCyan.copy(alpha = 0.14f))
+                    )
+                )
+                .border(1.dp, ElectricCyan.copy(alpha = 0.65f), RoundedCornerShape(12.dp))
                 .clickable { onOpenSuperPerf() }
-                .padding(horizontal = 12.dp, vertical = if (compact) 6.dp else 8.dp)
+                .padding(horizontal = 12.dp, vertical = if (compact) 7.dp else 9.dp)
         ) {
             Icon(
                 imageVector = Icons.Rounded.RocketLaunch,
@@ -1685,16 +1697,18 @@ private fun StartPlayButtonCluster(
                 tint = ElectricCyan,
                 modifier = Modifier.size(14.dp)
             )
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = "SUPER HIGH PERFORMANCE",
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontFamily = RajdhaniFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = if (compact) 11.sp else 12.sp,
-                    letterSpacing = 0.8.sp
+                    letterSpacing = 0.45.sp
                 ),
                 color = TextPrimary,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -2287,11 +2301,7 @@ private fun WallpaperThemeDialog(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(
-                    WindowInsets.safeDrawing.union(
-                        WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom)
-                    )
-                )
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(horizontal = 24.dp, vertical = 12.dp),
             contentAlignment = Alignment.Center
         ) {

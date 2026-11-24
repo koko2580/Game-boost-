@@ -1705,6 +1705,133 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.onNodeWithTag("xgame_launch_btn").assertIsDisplayed()
     }
 
+    @Test
+    @Config(sdk = [36], qualifiers = "w840dp-h340dp")
+    fun `landscape safe-area bounds keep hero card dock buttons above banner and settings rail framed`() {
+        val games = listOf(
+            InstalledAppInfo("com.test.one", "App Promo", "0.1.1", false),
+            InstalledAppInfo("com.test.two", "Clash of Clans", "18.647.2", false),
+            InstalledAppInfo("com.test.three", "Arena Strike", "2.0.0", false)
+        )
+        val screenStep = androidx.compose.runtime.mutableIntStateOf(0)
+
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            TurboGameXTheme {
+                if (screenStep.intValue == 0) {
+                    LauncherHomeScreen(
+                        settings = GameTurboSettings(
+                            addedGamePackages = games.map { it.packageName }.toSet(),
+                            selectedGamePackage = games.first().packageName,
+                            cpuMode = CpuMode.ACCELERATION
+                        ),
+                        telemetry = HardwareTelemetry(
+                            actualFps = 60,
+                            cpuFreqMHz = 1050,
+                            cpuCoreCount = 8,
+                            ramUsedPercent = 72,
+                            batteryTempCelsius = 43.3f,
+                            pingMs = 60
+                        ),
+                        permissions = PermissionStatus(true, true, true, true, true),
+                        addedGames = games,
+                        sessionHistory = emptyList(),
+                        remainingTurboSeconds = 3174L,
+                        statusMessage = null,
+                        isOverlayServiceRunning = false,
+                        peekAppIcon = { null },
+                        loadAppIconAsync = { null },
+                        onSelectGame = {},
+                        onStartPlay = {},
+                        onAddTurboTimeClick = {},
+                        onToggleOverlayService = {},
+                        onNavigateAddApps = {},
+                        onNavigateSettings = {},
+                        onNavigatePermissions = {},
+                        onBoostRam = {},
+                        onRunPingTest = {},
+                        onSelectCpuMode = {},
+                        onSelectWallpaperTheme = { _, _ -> },
+                        onDismissStatus = {}
+                    )
+                } else {
+                    SettingsScreen(
+                        settings = GameTurboSettings(),
+                        telemetry = HardwareTelemetry(actualFps = 60, cpuFreqMHz = 1800),
+                        performanceStatus = PerformanceEngineStatus(),
+                        permissions = PermissionStatus(true, true, true, true, true),
+                        securityAudit = SecurityAuditReport(),
+                        statusMessage = null,
+                        performanceActions = emptyPerformanceActions(),
+                        onUpdateSettings = {},
+                        onBoostRam = {},
+                        onClearCache = {},
+                        onSelectWallpaperTheme = { _, _ -> },
+                        onOpenPermissions = {},
+                        onDismissStatus = {},
+                        onBack = {}
+                    )
+                }
+            }
+        }
+
+        composeTestRule.mainClock.advanceTimeBy(300L)
+        val bannerBounds = composeTestRule.onNodeWithTag("admob_banner_container")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val heroBounds = composeTestRule.onNodeWithTag("cockpit_hero_card")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val dockBounds = composeTestRule.onNodeWithTag("game_dock_list")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val addBtnBounds = composeTestRule.onNodeWithTag("add_games_button")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val launchBtnBounds = composeTestRule.onNodeWithTag("start_play_button")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val superPerfBounds = composeTestRule.onNodeWithTag("open_super_perf_btn")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val turboModeBounds = composeTestRule.onNodeWithText("TURBO")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+
+        assertTrue(
+            "CockpitHeroCard bottom (${heroBounds.bottom}) overlapped banner top (${bannerBounds.top})",
+            heroBounds.bottom <= bannerBounds.top + 1f
+        )
+        assertTrue(
+            "TURBO pill bottom (${turboModeBounds.bottom}) clipped below banner top (${bannerBounds.top})",
+            turboModeBounds.bottom <= bannerBounds.top + 1f
+        )
+        assertTrue(
+            "GameDockList (${dockBounds.bottom}) overlapped Add Games (${addBtnBounds.top})",
+            dockBounds.bottom <= addBtnBounds.top + 1f
+        )
+        assertTrue(
+            "Add Games (${addBtnBounds.bottom}) overlapped banner (${bannerBounds.top})",
+            addBtnBounds.bottom <= bannerBounds.top + 1f
+        )
+        assertTrue(
+            "Launch button (${launchBtnBounds.bottom}) overlapped Super Perf (${superPerfBounds.top})",
+            launchBtnBounds.bottom <= superPerfBounds.top + 1f
+        )
+        assertTrue(
+            "Super Perf (${superPerfBounds.bottom}) overlapped banner (${bannerBounds.top})",
+            superPerfBounds.bottom <= bannerBounds.top + 1f
+        )
+
+        composeTestRule.mainClock.autoAdvance = true
+        composeTestRule.runOnUiThread { screenStep.intValue = 1 }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("settings_category_rail").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("settings_cat_PROTECTION").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("toggle_three_finger_guard").assertIsDisplayed()
+    }
+
     private fun emptyPerformanceActions(
         onSetOptimizeFramePacing: (Boolean) -> Unit = {},
         onSetEnableAdpfHints: (Boolean) -> Unit = {},

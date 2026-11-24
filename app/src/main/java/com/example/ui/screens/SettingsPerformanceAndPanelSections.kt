@@ -127,41 +127,52 @@ fun SettingToggleRow(
     onCheckedChange: (Boolean) -> Unit,
     testTag: String? = null
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
+    val accent = LocalTurboAccent.current.accent
+    val borderColor by animateColorAsState(
+        targetValue = if (checked) accent.copy(alpha = 0.48f) else CyberBorder.copy(alpha = 0.72f),
+        animationSpec = tween(200),
+        label = "setting_card_border"
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(MidnightSurface.copy(alpha = 0.88f))
+            .border(1.dp, borderColor, RoundedCornerShape(14.dp))
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onCheckedChange(!checked) }
-                .padding(vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .weight(1f)
+                .padding(end = 16.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 16.dp)
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary
-                )
-                if (subtitle != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
-                    )
-                }
-            }
-            CyberToggleSwitch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                testTag = testTag
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    lineHeight = 20.sp
+                ),
+                color = TextPrimary
             )
+            if (subtitle != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 17.sp),
+                    color = TextSecondary
+                )
+            }
         }
-        HorizontalDivider(color = CyberBorder.copy(alpha = 0.45f))
+        CyberToggleSwitch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            testTag = testTag
+        )
     }
 }
 
