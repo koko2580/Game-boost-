@@ -319,6 +319,7 @@ fun TurboXGamingPanel(
                     volumeFraction = volumeFraction,
                     isOverlayServiceRunning = isOverlayServiceRunning,
                     compact = !isLandscape,
+                    compactHeight = compactHeight,
                     onBrightnessChange = onBrightnessChange,
                     onVolumeChange = onVolumeChange,
                     onBoostRam = onBoostRam,

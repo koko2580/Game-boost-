@@ -70,6 +70,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.data.ScreenColorMode
 import com.example.service.GameOverlayService
+import com.example.service.PerformanceSessionService
 import com.example.ui.components.CrosshairOverlay
 import com.example.ui.components.GamePanelOverlayContent
 import com.example.ui.components.LocalTurboTouchConfig
@@ -77,6 +78,7 @@ import com.example.ui.components.NetworkGateOverlay
 import com.example.ui.components.OneTapBoosterDialog
 import com.example.ui.components.OverlayCallbacks
 import com.example.ui.components.RewardedAdDialog
+import com.example.ui.components.SuperHighPerformanceWarningDialog
 import com.example.ui.components.TurboCockpitReactor
 import com.example.ui.components.TurboTouchConfig
 import com.example.ui.components.cpuModeColor
@@ -85,6 +87,7 @@ import com.example.ui.screens.LauncherHomeScreen
 import com.example.ui.screens.PerformanceActions
 import com.example.ui.screens.PermissionsScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.SuperHighPerformanceScreen
 import com.example.ui.screens.TurboSplashScreen
 import com.example.ui.screens.TurboXGamingPanel
 import com.example.ui.theme.CyberBorder
@@ -103,6 +106,7 @@ private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_ADD_APPS = "add_apps"
 private const val ROUTE_PERMISSIONS = "permissions"
 private const val ROUTE_X_GAME_SPACE = "x_game_space"
+private const val ROUTE_SUPER_PERF = PerformanceSessionService.ROUTE_SUPER_PERF
 
 class MainActivity : ComponentActivity() {
 
@@ -147,6 +151,8 @@ class MainActivity : ComponentActivity() {
             val prefsLoaded by viewModel.prefsLoaded.collectAsStateWithLifecycle()
             val isNetworkConnected by viewModel.isNetworkConnected.collectAsStateWithLifecycle()
             val oneTapState by viewModel.oneTapBooster.collectAsStateWithLifecycle()
+            val extremeUiState by viewModel.extremeUiState.collectAsStateWithLifecycle()
+            val showSuperPerfWarning by viewModel.showSuperPerfWarningDialog.collectAsStateWithLifecycle()
 
             val lifecycleOwner = LocalLifecycleOwner.current
             DisposableEffect(lifecycleOwner) {
@@ -302,7 +308,46 @@ class MainActivity : ComponentActivity() {
                                 onDismissStatus = viewModel::clearStatus,
                                 onNavigateXGameSpace = {
                                     navController.navigate(ROUTE_X_GAME_SPACE) { launchSingleTop = true }
+                                },
+                                onNavigateSuperPerf = {
+                                    navController.navigate(ROUTE_SUPER_PERF) { launchSingleTop = true }
                                 }
+                            )
+                        }
+
+                        composable(ROUTE_SUPER_PERF) {
+                            SuperHighPerformanceScreen(
+                                uiState = extremeUiState,
+                                adReady = rewardedAdReady,
+                                adLoading = rewardedAdLoading,
+                                adError = rewardedAdError,
+                                adCooldownSeconds = rewardedCooldownSeconds,
+                                statusMessage = statusMessage,
+                                peekAppIcon = viewModel::peekAppIcon,
+                                loadAppIconAsync = viewModel::loadAppIconAsync,
+                                onSelectGame = { pkg ->
+                                    viewModel.selectSuperPerfGame(pkg, this@MainActivity)
+                                },
+                                onWatchUnlockAd = {
+                                    viewModel.watchSuperPerfUnlockAd(this@MainActivity)
+                                },
+                                onActivate = {
+                                    viewModel.activateSuperHighPerformance(this@MainActivity)
+                                },
+                                onDeactivate = {
+                                    viewModel.deactivateSuperHighPerformance(activity = this@MainActivity)
+                                },
+                                onToggleAutoStart = viewModel::toggleSuperPerfAutoStart,
+                                onViewWarningInfo = {
+                                    viewModel.openSuperPerfWarningDialog(activateOnConfirm = false)
+                                },
+                                onRequestUsageAccess = {
+                                    viewModel.suppressAppOpenForExternalFlow()
+                                    viewModel.hardware.openUsageAccessSettings()
+                                },
+                                onNavigateAddGames = { navController.navigate(ROUTE_ADD_APPS) },
+                                onRunPingTest = viewModel::runPingTest,
+                                onBack = { navController.popBackStack() }
                             )
                         }
 
@@ -582,6 +627,12 @@ class MainActivity : ComponentActivity() {
                         onWatchAd = { viewModel.watchRealRewardedAd(this@MainActivity) },
                         onRetryLoad = viewModel::retryLoadRewardedAd,
                         onDismiss = viewModel::dismissAdDialog
+                    )
+
+                    SuperHighPerformanceWarningDialog(
+                        visible = showSuperPerfWarning,
+                        onContinue = { viewModel.confirmSuperPerfWarningDialog(this@MainActivity) },
+                        onCancel = viewModel::dismissSuperPerfWarningDialog
                     )
 
                     // First-Launch Required Permissions Onboarding Screen

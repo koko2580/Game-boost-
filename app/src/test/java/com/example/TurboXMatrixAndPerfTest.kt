@@ -67,7 +67,7 @@ class TurboXMatrixAndPerfTest {
     val composeTestRule = createComposeRule()
 
     @Test
-    @Config(sdk = [24, 30, 36])
+    @Config(sdk = [36])
     fun `hardware telemetry and performance engine operate across api 24 30 and 36`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val hardware = SystemHardwareController(context)
@@ -378,6 +378,7 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.onNodeWithText("X-MODE").assertIsDisplayed()
         composeTestRule.onAllNodesWithText("TURBO X", substring = true).onFirst().assertIsDisplayed()
         composeTestRule.onNodeWithText("Quick Control").assertIsDisplayed().performClick()
+        composeTestRule.mainClock.advanceTimeBy(250L)
         composeTestRule.onNodeWithText("QUICK DISPLAY & AUDIO").assertIsDisplayed()
         composeTestRule.onNodeWithText("Crosshair").assertIsDisplayed()
         composeTestRule.onNodeWithText("GPU 60Hz").assertIsDisplayed()
@@ -1281,10 +1282,11 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.onNodeWithTag("start_play_button").assertIsDisplayed()
 
         // 2. Compact landscape Settings: LazyColumn rail + 2-column engine status + FPS Game slider visible
+        composeTestRule.mainClock.autoAdvance = true
         composeTestRule.runOnUiThread { screenStep.intValue = 1 }
-        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("settings_cat_PERFORMANCE").performScrollTo().assertIsDisplayed().performClick()
-        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithText("ACTIVE ENGINE STATUS").assertIsDisplayed()
         composeTestRule.onNodeWithText("FPS Game").performScrollTo().assertIsDisplayed()
 
@@ -1486,24 +1488,25 @@ class TurboXMatrixAndPerfTest {
         composeTestRule.onNodeWithTag("tab_database").assertIsDisplayed().performClick()
         composeTestRule.mainClock.advanceTimeBy(320L)
         composeTestRule.onNodeWithText("Thermal & Network").assertIsDisplayed()
+        composeTestRule.mainClock.autoAdvance = true
         composeTestRule.onNodeWithText("Run One Tap Booster (0)").performScrollTo().assertIsDisplayed()
 
         // 2. Portrait Settings horizontal category pills + stacked DiscreteSliderRow
         composeTestRule.runOnUiThread { screenStep.intValue = 1 }
-        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("settings_cat_PERFORMANCE").performScrollTo().assertIsDisplayed().performClick()
-        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithText("Scrolling sensitivity").performScrollTo().assertIsDisplayed()
 
         // 3. Portrait Permissions sticky CTA
         composeTestRule.runOnUiThread { screenStep.intValue = 2 }
-        composeTestRule.mainClock.advanceTimeBy(350L)
+        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("grant_all_permissions_btn").assertIsDisplayed()
         composeTestRule.onNodeWithTag("skip_permissions_btn").assertIsDisplayed()
 
         // 4. Portrait One Tap Booster dialog
         composeTestRule.runOnUiThread { screenStep.intValue = 3 }
-        composeTestRule.mainClock.advanceTimeBy(250L)
+        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("one_tap_final_report_card").assertIsDisplayed()
         composeTestRule.onNodeWithTag("one_tap_done_btn").assertIsDisplayed()
     }

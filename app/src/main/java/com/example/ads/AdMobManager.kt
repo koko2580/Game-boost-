@@ -71,7 +71,11 @@ object AdUnitIds {
     const val BANNER = "ca-app-pub-5984576938417142/2994020841"
     const val INTERSTITIAL = "ca-app-pub-5984576938417142/3117455560"
     const val REWARDED = "ca-app-pub-5984576938417142/5620184189"
+    const val TEST_REWARDED = "ca-app-pub-3940256099942544/5224354917"
     const val APP_OPEN = "ca-app-pub-5984576938417142/2587838493"
+
+    fun effectiveRewarded(isDebug: Boolean = BuildConfig.DEBUG): String =
+        if (isDebug) TEST_REWARDED else REWARDED
 }
 
 enum class AdEndpointProbeResult {
@@ -702,7 +706,7 @@ class AdMobManager(private val appContext: Context) {
 
         RewardedAd.load(
             appContext,
-            AdUnitIds.REWARDED,
+            AdUnitIds.effectiveRewarded(),
             AdRequest.Builder().build(),
             object : RewardedAdLoadCallback() {
                 override fun onAdLoaded(ad: RewardedAd) {

@@ -135,8 +135,8 @@ internal fun XiaomiHyperOverlayContent(
         lowRamOverlayMode = settings.lowRamOverlayMode,
         rootTag = "overlay_xiaomi_root",
         onDismissToHandle = callbacks.onMinimizeClick,
-        maxLandscapeWidthFraction = 0.49f,
-        maxLandscapeWidthDp = 428.dp,
+        maxLandscapeWidthFraction = 0.46f,
+        maxLandscapeWidthDp = 400.dp,
         maxPortraitHeightFraction = 0.62f
     ) { dockEdge, _ ->
         Row(

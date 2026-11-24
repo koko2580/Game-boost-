@@ -711,6 +711,31 @@ class PerformanceTuningEngine(private val context: Context) {
         lastAdpfTargetNs = 0L
     }
 
+    fun restoreAfterExtremeSession(activity: Activity? = null) {
+        closeSession()
+        updateSystemGameState(boostActive = false)
+        applyThreadPriority(urgent = false)
+        if (activity != null) {
+            runCatching {
+                val window = activity.window
+                val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                if (pm != null && pm.isSustainedPerformanceModeSupported) {
+                    window.setSustainedPerformanceMode(false)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    window.setPreferMinimalPostProcessing(false)
+                }
+            }
+        }
+        _status.value = _status.value.copy(
+            adpfHintActive = false,
+            gameStateActive = false,
+            threadPriorityBoosted = false,
+            sustainedPerformanceActive = false,
+            minimalPostProcessingActive = false
+        )
+    }
+
     private class UnbufferedTouchWindowCallback(
         private val original: Window.Callback,
         private val decorView: View,

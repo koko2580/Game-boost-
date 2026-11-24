@@ -172,7 +172,8 @@ fun LauncherHomeScreen(
     onSelectCpuMode: (CpuMode) -> Unit,
     onSelectWallpaperTheme: (WallpaperTheme, String?) -> Unit,
     onDismissStatus: () -> Unit,
-    onNavigateXGameSpace: () -> Unit = {}
+    onNavigateXGameSpace: () -> Unit = {},
+    onNavigateSuperPerf: () -> Unit = {}
 ) {
     val palette = LocalTurboAccent.current
     val modeGlowColor = cpuModeColor(settings.cpuMode, palette.accent)
@@ -541,7 +542,8 @@ fun LauncherHomeScreen(
                                             accentDeep = palette.accentDeep,
                                             remainingTurboSeconds = remainingTurboSeconds,
                                             compact = isCompactHeight,
-                                            onStartPlay = onStartPlay
+                                            onStartPlay = onStartPlay,
+                                            onOpenSuperPerf = onNavigateSuperPerf
                                         )
                                     }
                                 }
@@ -584,7 +586,8 @@ fun LauncherHomeScreen(
                                         accentColor = palette.accent,
                                         accentDeep = palette.accentDeep,
                                         remainingTurboSeconds = remainingTurboSeconds,
-                                        onStartPlay = onStartPlay
+                                        onStartPlay = onStartPlay,
+                                        onOpenSuperPerf = onNavigateSuperPerf
                                     )
 
                                     Spacer(modifier = Modifier.height(10.dp))
@@ -1586,6 +1589,7 @@ private fun StartPlayButtonCluster(
     remainingTurboSeconds: Long,
     compact: Boolean = false,
     onStartPlay: () -> Unit,
+    onOpenSuperPerf: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val hasTime = remainingTurboSeconds > 0L
@@ -1662,6 +1666,37 @@ private fun StartPlayButtonCluster(
             maxLines = 2,
             modifier = Modifier.widthIn(max = if (compact) 210.dp else 280.dp)
         )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .testTag("open_super_perf_btn")
+                .minimumInteractiveComponentSize()
+                .widthIn(min = if (compact) 182.dp else 210.dp, max = if (compact) 216.dp else 264.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(CyberElevated.copy(alpha = 0.9f))
+                .border(1.dp, ElectricCyan.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+                .clickable { onOpenSuperPerf() }
+                .padding(horizontal = 12.dp, vertical = if (compact) 6.dp else 8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.RocketLaunch,
+                contentDescription = "Super High Performance Mode",
+                tint = ElectricCyan,
+                modifier = Modifier.size(14.dp)
+            )
+            Text(
+                text = "SUPER HIGH PERFORMANCE",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontFamily = RajdhaniFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = if (compact) 11.sp else 12.sp,
+                    letterSpacing = 0.8.sp
+                ),
+                color = TextPrimary,
+                maxLines = 1
+            )
+        }
     }
 }
 

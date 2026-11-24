@@ -95,6 +95,10 @@ class GameTurboPreferencesRepository(private val context: Context) {
         val ADS_WATCHED_COUNT = intPreferencesKey("ads_watched_count")
         val TURBO_TIME_VAULT_TOKEN = stringPreferencesKey("turbo_time_vault_v1")
         val HAS_COMPLETED_PERMISSION_SETUP = booleanPreferencesKey("has_completed_permission_setup")
+        val SUPER_PERF_SELECTED_GAME = stringPreferencesKey("super_perf_selected_game")
+        val SUPER_PERF_UNLOCK_VAULT = stringPreferencesKey("super_perf_unlock_vault_v1")
+        val SUPER_PERF_WARNING_ACCEPTED = booleanPreferencesKey("super_perf_warning_accepted")
+        val SUPER_PERF_AUTO_START = booleanPreferencesKey("super_perf_auto_start")
     }
 
     val settingsFlow: Flow<GameTurboSettings> = context.dataStore.data.map { prefs ->
@@ -182,6 +186,26 @@ class GameTurboPreferencesRepository(private val context: Context) {
             prefs.remove(Keys.TURBO_TIME_EXPIRES_AT_MS)
             prefs.remove(Keys.ADS_WATCHED_COUNT)
             prefs[Keys.HAS_COMPLETED_PERMISSION_SETUP] = updated.hasCompletedPermissionSetup
+
+            // Super High Performance Mode (Single Selected Game + Sealed 2-Ad Unlock + Warning)
+            val resolvedSuperGame = updated.superPerfSelectedGamePackage
+                ?.takeIf { it in updated.addedGamePackages }
+            if (resolvedSuperGame != null) {
+                prefs[Keys.SUPER_PERF_SELECTED_GAME] = resolvedSuperGame
+            } else {
+                prefs.remove(Keys.SUPER_PERF_SELECTED_GAME)
+            }
+            val sealedSuperUnlock = securityGuard.sealSuperPerfUnlock(
+                ad1Watched = updated.superPerfAd1Watched,
+                ad2Watched = updated.superPerfAd2Watched,
+                unlocked = updated.superPerfUnlocked,
+                unlockedAtWallMs = updated.superPerfUnlockedAtMs
+            )
+            if (sealedSuperUnlock != null) {
+                prefs[Keys.SUPER_PERF_UNLOCK_VAULT] = sealedSuperUnlock
+            }
+            prefs[Keys.SUPER_PERF_WARNING_ACCEPTED] = updated.superPerfWarningAccepted
+            prefs[Keys.SUPER_PERF_AUTO_START] = updated.superPerfAutoStartOnLaunch
         }
     }
 
@@ -206,6 +230,12 @@ class GameTurboPreferencesRepository(private val context: Context) {
         }
         val resolvedExpiresAt = unsealed?.expiresAtWallMs ?: 0L
         val resolvedAdsCount = unsealed?.adsWatchedCount ?: 0
+        val superUnlockToken = prefs[Keys.SUPER_PERF_UNLOCK_VAULT]
+        val unsealedSuper = if (!superUnlockToken.isNullOrBlank()) {
+            securityGuard.unsealSuperPerfUnlock(superUnlockToken)
+        } else {
+            com.example.security.SealedSuperPerfUnlock()
+        }
 
         return GameTurboSettings(
             autoDndOnEnter = prefs[Keys.AUTO_DND] ?: true,
@@ -268,7 +298,15 @@ class GameTurboPreferencesRepository(private val context: Context) {
             totalUsageMinutes = prefs[Keys.TOTAL_USAGE_MINUTES] ?: 0,
             turboTimeExpiresAtMs = resolvedExpiresAt,
             adsWatchedCount = resolvedAdsCount,
-            hasCompletedPermissionSetup = prefs[Keys.HAS_COMPLETED_PERMISSION_SETUP] ?: false
+            hasCompletedPermissionSetup = prefs[Keys.HAS_COMPLETED_PERMISSION_SETUP] ?: false,
+            superPerfSelectedGamePackage = prefs[Keys.SUPER_PERF_SELECTED_GAME]
+                ?.takeIf { it in (prefs[Keys.ADDED_GAME_PACKAGES] ?: emptySet()) },
+            superPerfAd1Watched = unsealedSuper.ad1Watched,
+            superPerfAd2Watched = unsealedSuper.ad2Watched,
+            superPerfUnlocked = unsealedSuper.unlocked,
+            superPerfUnlockedAtMs = unsealedSuper.unlockedAtWallMs,
+            superPerfWarningAccepted = prefs[Keys.SUPER_PERF_WARNING_ACCEPTED] ?: false,
+            superPerfAutoStartOnLaunch = prefs[Keys.SUPER_PERF_AUTO_START] ?: true
         )
     }
 

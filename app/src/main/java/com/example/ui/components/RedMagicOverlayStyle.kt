@@ -126,8 +126,8 @@ internal fun RedMagicCyberOverlayContent(
         lowRamOverlayMode = settings.lowRamOverlayMode,
         rootTag = "overlay_redmagic_root",
         onDismissToHandle = callbacks.onMinimizeClick,
-        maxLandscapeWidthFraction = 0.49f,
-        maxLandscapeWidthDp = 434.dp,
+        maxLandscapeWidthFraction = 0.46f,
+        maxLandscapeWidthDp = 400.dp,
         maxPortraitHeightFraction = 0.64f
     ) { dockEdge, _ ->
         Box(

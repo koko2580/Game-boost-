@@ -33,7 +33,12 @@ import com.example.data.WallpaperTheme
 import com.example.data.ScreenshotHelper
 import com.example.network.NetworkGateMonitor
 import com.example.security.SecurityAuditReport
+import com.example.extreme.ActivationAttemptResult
+import com.example.extreme.ExtremePerformanceManager
+import com.example.extreme.ExtremeUiState
+import com.example.extreme.UnlockStepResult
 import com.example.service.GameOverlayService
+import com.example.service.PerformanceSessionService
 import com.example.service.ScreenCaptureActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -160,6 +165,14 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     private val networkMonitor = NetworkGateMonitor(application)
     val isNetworkConnected: StateFlow<Boolean> = networkMonitor.isConnected
 
+    val extremeManager = ExtremePerformanceManager(application, repo, hardware)
+    val extremeUiState: StateFlow<ExtremeUiState> = extremeManager.uiState
+
+    private val _showSuperPerfWarningDialog = MutableStateFlow(false)
+    val showSuperPerfWarningDialog: StateFlow<Boolean> = _showSuperPerfWarningDialog.asStateFlow()
+
+    private val _superPerfPendingActivateAfterWarning = MutableStateFlow(false)
+
     private var lastPingMs: Int? = null
     private var lastJitterMs: Int? = null
     private var lastFrameNanos: Long = 0L
@@ -176,11 +189,30 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
             repo.settingsFlow.first()
             _prefsLoaded.value = true
         }
+        PerformanceSessionService.onExternalStopRequested = {
+            deactivateSuperHighPerformance("Stopped via session notification")
+        }
         refreshInstalledApps()
         startTelemetryLoop()
         startStopwatchLoop()
         startTurboTimeLoop()
         observeNetworkGate()
+        observeExtremeStateSync()
+    }
+
+    private fun observeExtremeStateSync() {
+        viewModelScope.launch {
+            combine(settings, _installedApps, _telemetry, _permissions) { s, apps, t, perms ->
+                listOf(s, apps, t, perms)
+            }.collect {
+                extremeManager.syncState(
+                    settings = settings.value,
+                    installedApps = _installedApps.value,
+                    telemetry = _telemetry.value,
+                    permissions = _permissions.value
+                )
+            }
+        }
     }
 
     private fun observeNetworkGate() {
@@ -265,6 +297,16 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
     fun checkForegroundGameAutoLaunch() {
         val current = settings.value
         val fgPkg = hardware.getForegroundPackageName()
+        viewModelScope.launch {
+            extremeManager.evaluateForegroundApp(
+                foregroundPackage = fgPkg,
+                settings = current,
+                installedApps = _installedApps.value,
+                telemetry = _telemetry.value,
+                permissions = _permissions.value,
+                knownNonEssentialPackages = _installedApps.value.map { it.packageName }
+            )
+        }
         if (fgPkg != null && fgPkg !in current.addedGamePackages && fgPkg != getApplication<Application>().packageName) {
             lastAutoDetectedPackage = null
         }
@@ -367,7 +409,34 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
                         }
                     }
                 }
-                delay(1200L)
+                if (extremeManager.isSessionActive || extremeManager.selectedGameMonitor.hasUsageAccess()) {
+                    val fg = hardware.getForegroundPackageName()
+                    if (fg != null && (extremeManager.isSessionActive || currentSettings.superPerfAutoStartOnLaunch)) {
+                        extremeManager.evaluateForegroundApp(
+                            foregroundPackage = fg,
+                            settings = currentSettings,
+                            installedApps = _installedApps.value,
+                            telemetry = snapshot,
+                            permissions = _permissions.value,
+                            knownNonEssentialPackages = _installedApps.value.map { it.packageName }
+                        )
+                    }
+                    extremeManager.evaluateThermalTick(
+                        settings = currentSettings,
+                        installedApps = _installedApps.value,
+                        telemetry = snapshot,
+                        permissions = _permissions.value
+                    )
+                } else {
+                    extremeManager.syncState(
+                        settings = currentSettings,
+                        installedApps = _installedApps.value,
+                        telemetry = snapshot,
+                        permissions = _permissions.value
+                    )
+                }
+                val intervalMs = if (extremeManager.backgroundOptimizer.turboWorkloadsThrottled.value) 4000L else 1200L
+                delay(intervalMs)
             }
         }
     }
@@ -850,6 +919,15 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun toggleGameAdded(packageName: String) {
         hardware.audioEnhancer.pulseHaptic(false)
+        if (packageName == settings.value.superPerfSelectedGamePackage && extremeManager.isSessionActive) {
+            extremeManager.deactivateAndRestoreAll(
+                reason = "Removed selected game from library",
+                settings = settings.value,
+                installedApps = _installedApps.value,
+                telemetry = _telemetry.value,
+                permissions = _permissions.value
+            )
+        }
         updateSettings { current ->
             val nextSet = if (packageName in current.addedGamePackages) {
                 current.addedGamePackages - packageName
@@ -860,13 +938,207 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
                 current.selectedGamePackage in nextSet -> current.selectedGamePackage
                 else -> nextSet.firstOrNull()
             }
-            current.copy(addedGamePackages = nextSet, selectedGamePackage = nextSelected)
+            val nextSuperSelected = current.superPerfSelectedGamePackage?.takeIf { it in nextSet }
+            current.copy(
+                addedGamePackages = nextSet,
+                selectedGamePackage = nextSelected,
+                superPerfSelectedGamePackage = nextSuperSelected
+            )
         }
     }
 
     fun selectGame(packageName: String) {
         hardware.audioEnhancer.pulseHaptic(false)
-        updateSettings { it.copy(selectedGamePackage = packageName) }
+        viewModelScope.launch {
+            if (extremeManager.isSessionActive && extremeManager.activePackageName != packageName) {
+                extremeManager.deactivateAndRestoreAll(
+                    reason = "Stopped previous session before switching games",
+                    settings = settings.value,
+                    installedApps = _installedApps.value,
+                    telemetry = _telemetry.value,
+                    permissions = _permissions.value
+                )
+            }
+            updateSettings { it.copy(selectedGamePackage = packageName) }
+        }
+    }
+
+    fun selectSuperPerfGame(packageName: String?, activity: Activity? = null) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        viewModelScope.launch {
+            extremeManager.selectGame(
+                packageName = packageName,
+                settings = settings.value,
+                installedApps = _installedApps.value,
+                telemetry = _telemetry.value,
+                permissions = _permissions.value,
+                activity = activity
+            )
+            if (packageName != null) {
+                val appName = _installedApps.value.firstOrNull { it.packageName == packageName }?.appName ?: packageName
+                showStatus("Selected $appName for Super High Performance")
+            } else {
+                showStatus("Selected game cleared")
+            }
+        }
+    }
+
+    fun toggleSuperPerfAutoStart(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        updateSettings { it.copy(superPerfAutoStartOnLaunch = enabled) }
+    }
+
+    fun openSuperPerfWarningDialog(activateOnConfirm: Boolean = false) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        _superPerfPendingActivateAfterWarning.value = activateOnConfirm
+        _showSuperPerfWarningDialog.value = true
+    }
+
+    fun dismissSuperPerfWarningDialog() {
+        _superPerfPendingActivateAfterWarning.value = false
+        _showSuperPerfWarningDialog.value = false
+    }
+
+    fun confirmSuperPerfWarningDialog(activity: Activity? = null) {
+        val shouldActivate = _superPerfPendingActivateAfterWarning.value
+        _superPerfPendingActivateAfterWarning.value = false
+        _showSuperPerfWarningDialog.value = false
+        viewModelScope.launch {
+            extremeManager.acceptWarningDialog(
+                settings = settings.value,
+                installedApps = _installedApps.value,
+                telemetry = _telemetry.value,
+                permissions = _permissions.value
+            )
+            if (shouldActivate) {
+                activateSuperHighPerformance(activity)
+            }
+        }
+    }
+
+    fun activateSuperHighPerformance(activity: Activity? = null) {
+        hardware.audioEnhancer.pulseHaptic(true)
+        viewModelScope.launch {
+            val result = extremeManager.activateForSelectedGame(
+                settings = settings.value,
+                installedApps = _installedApps.value,
+                telemetry = _telemetry.value,
+                permissions = _permissions.value,
+                knownNonEssentialPackages = _installedApps.value.map { it.packageName },
+                activity = activity,
+                manualActivation = true
+            )
+            when (result) {
+                is ActivationAttemptResult.NeedsWarningConfirmation -> {
+                    openSuperPerfWarningDialog(activateOnConfirm = true)
+                }
+                is ActivationAttemptResult.Blocked -> {
+                    showStatus(result.reason)
+                }
+                is ActivationAttemptResult.Activated -> {
+                    hardware.audioEnhancer.playTacticalTone()
+                    showStatus("Super High Performance ACTIVE for ${result.game.appName}")
+                }
+            }
+        }
+    }
+
+    fun deactivateSuperHighPerformance(
+        reason: String = "Disabled by user — all temporary settings restored",
+        activity: Activity? = null
+    ) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        extremeManager.deactivateAndRestoreAll(
+            reason = reason,
+            settings = settings.value,
+            installedApps = _installedApps.value,
+            telemetry = _telemetry.value,
+            permissions = _permissions.value,
+            activity = activity
+        )
+        showStatus("Super High Performance stopped & settings restored")
+    }
+
+    fun watchSuperPerfUnlockAd(activity: Activity?) {
+        val unlockState = extremeUiState.value.unlockState
+        if (unlockState.isUnlocked) {
+            showStatus("Super High Performance is already unlocked")
+            return
+        }
+        val step = unlockState.nextRequiredStep
+        val token = extremeManager.unlockManager.beginAdAttempt(step) ?: return
+
+        if (activity == null || adMobManager == null) {
+            extremeManager.unlockManager.recordAdSkippedOrFailed("Ad service unavailable")
+            showStatus("Ad service unavailable — try again on a connected device")
+            return
+        }
+        hardware.audioEnhancer.pulseHaptic(false)
+
+        if (adMobManager.rewardedAdReady.value) {
+            showSuperPerfRewardedAd(activity, step, token)
+        } else if (adMobManager.rewardedCooldownSeconds.value > 0) {
+            extremeManager.unlockManager.recordAdSkippedOrFailed(
+                "Ad warming up — retry in ${adMobManager.rewardedCooldownSeconds.value}s"
+            )
+            showStatus("Ad warming up — ready in ${adMobManager.rewardedCooldownSeconds.value}s")
+        } else {
+            adMobManager.loadRewardedAd()
+            viewModelScope.launch {
+                withTimeoutOrNull(12_000L) {
+                    adMobManager.rewardedAdLoading.first { !it }
+                }
+                if (adMobManager.rewardedAdReady.value && !activity.isFinishing && !activity.isDestroyed) {
+                    showSuperPerfRewardedAd(activity, step, token)
+                } else {
+                    val err = adMobManager.rewardedAdError.value ?: "Rewarded ad not ready yet. Please retry."
+                    extremeManager.unlockManager.recordAdSkippedOrFailed(err)
+                    showStatus(err)
+                }
+            }
+        }
+    }
+
+    private fun showSuperPerfRewardedAd(activity: Activity, step: Int, sessionToken: String) {
+        val manager = adMobManager ?: return
+        manager.showRewardedAd(
+            activity = activity,
+            onRewardEarned = {
+                viewModelScope.launch {
+                    val res = extremeManager.unlockManager.verifyAdRewardEarned(step, sessionToken)
+                    extremeManager.syncState(
+                        settings = settings.value,
+                        installedApps = _installedApps.value,
+                        telemetry = _telemetry.value,
+                        permissions = _permissions.value
+                    )
+                    when (res) {
+                        is UnlockStepResult.Step1Completed -> {
+                            hardware.audioEnhancer.pulseHaptic(true)
+                            showStatus("Ad 1 of 2 complete! Watch 1 more ad to unlock.")
+                        }
+                        is UnlockStepResult.Unlocked -> {
+                            hardware.audioEnhancer.playTacticalTone()
+                            hardware.audioEnhancer.pulseHaptic(true)
+                            showStatus("Super High Performance UNLOCKED!")
+                        }
+                        is UnlockStepResult.Rejected -> {
+                            showStatus(res.reason)
+                        }
+                    }
+                }
+            },
+            onClosedWithoutReward = {
+                extremeManager.unlockManager.recordAdSkippedOrFailed(
+                    "Ad $step skipped before reward — step not counted"
+                )
+                showStatus("Watch the full rewarded ad ($step/2) to earn unlock progress")
+            },
+            onNotReady = {
+                extremeManager.unlockManager.recordAdSkippedOrFailed("Loading rewarded ad — please retry")
+                showStatus("Loading rewarded ad, please try again")
+            }
+        )
     }
 
     fun setCpuMode(mode: CpuMode) {
@@ -1552,6 +1824,8 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
 
     override fun onCleared() {
         super.onCleared()
+        PerformanceSessionService.onExternalStopRequested = null
+        extremeManager.resetSessionWithoutPersistedChanges()
         networkMonitor.unregister()
         hardware.performanceEngine.closeSession()
         hardware.audioEnhancer.releaseEffects()

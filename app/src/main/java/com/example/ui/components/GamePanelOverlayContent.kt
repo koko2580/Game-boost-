@@ -438,8 +438,8 @@ private fun CyberWingHalfOverlayContent(
         lowRamOverlayMode = settings.lowRamOverlayMode,
         rootTag = if (isClassic) "overlay_classic_root" else "overlay_new_root",
         onDismissToHandle = callbacks.onMinimizeClick,
-        maxLandscapeWidthFraction = 0.49f,
-        maxLandscapeWidthDp = 432.dp,
+        maxLandscapeWidthFraction = 0.46f,
+        maxLandscapeWidthDp = 400.dp,
         maxPortraitHeightFraction = 0.62f
     ) { dockEdge, _ ->
         Box(

@@ -222,16 +222,19 @@ internal fun XGameTopStatusBar(
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontSize = if (compact) 15.sp else 17.sp,
+                        lineHeight = if (compact) 18.sp else 20.sp,
                         letterSpacing = 1.6.sp
                     ),
                     maxLines = 1
                 )
-                Text(
-                    text = "TURBO X ENGINE HUD",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp, letterSpacing = 1.2.sp),
-                    color = TextMuted,
-                    maxLines = 1
-                )
+                if (!compact) {
+                    Text(
+                        text = "TURBO X ENGINE HUD",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp, lineHeight = 11.sp, letterSpacing = 1.2.sp),
+                        color = TextMuted,
+                        maxLines = 1
+                    )
+                }
             }
         }
 
@@ -380,7 +383,7 @@ internal fun XGamePerformanceLeftPanel(
                 ),
                 shape = panelShape
             )
-            .padding(horizontal = 9.dp, vertical = 8.dp),
+            .padding(horizontal = 9.dp, vertical = if (compactHeight) 5.dp else 8.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
@@ -394,7 +397,8 @@ internal fun XGamePerformanceLeftPanel(
                     fontFamily = RajdhaniFontFamily,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.2.sp,
-                    fontSize = 10.sp
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp
                 ),
                 color = XGameNeonRed
             )
@@ -403,7 +407,8 @@ internal fun XGamePerformanceLeftPanel(
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontFamily = RajdhaniFontFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 9.5.sp
+                    fontSize = 9.5.sp,
+                    lineHeight = 12.sp
                 ),
                 color = ElectricCyan
             )
@@ -436,7 +441,7 @@ internal fun XGamePerformanceLeftPanel(
             )
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (compactHeight) 3.dp else 4.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -457,13 +462,15 @@ internal fun XGamePerformanceLeftPanel(
                     modifier = Modifier.weight(1f)
                 )
             }
-            XGameMonitorMetricTile(
-                label = "ENGINE PIPELINE",
-                value = "${performanceStatus.activeGpuPipelineLabel} • ${settings.frameRateTarget}Hz",
-                valueColor = TextPrimary,
-                shape = chipShape,
-                modifier = Modifier.fillMaxWidth()
-            )
+            if (!compactHeight) {
+                XGameMonitorMetricTile(
+                    label = "ENGINE PIPELINE",
+                    value = "${performanceStatus.activeGpuPipelineLabel} • ${settings.frameRateTarget}Hz",
+                    valueColor = TextPrimary,
+                    shape = chipShape,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
 
         Row(
@@ -525,11 +532,11 @@ private fun XGameArcDialGauge(
     compact: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val dialSize = if (compact) 64.dp else 88.dp
+    val dialSize = if (compact) 48.dp else 88.dp
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalArrangement = Arrangement.spacedBy(1.dp)
     ) {
         Box(modifier = Modifier.size(dialSize), contentAlignment = Alignment.Center) {
             Canvas(modifier = Modifier.fillMaxSize()) {
@@ -572,14 +579,19 @@ private fun XGameArcDialGauge(
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = if (compact) 14.sp else 18.sp
+                        fontSize = if (compact) 12.sp else 18.sp,
+                        lineHeight = if (compact) 14.sp else 21.sp
                     ),
                     color = Color.White,
                     maxLines = 1
                 )
                 Text(
                     text = unitText,
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, fontWeight = FontWeight.Bold),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = if (compact) 7.sp else 8.sp,
+                        lineHeight = 9.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
                     color = arcColor,
                     maxLines = 1
                 )
@@ -590,7 +602,8 @@ private fun XGameArcDialGauge(
             style = MaterialTheme.typography.labelSmall.copy(
                 fontFamily = RajdhaniFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 9.5.sp,
+                fontSize = 9.sp,
+                lineHeight = 11.sp,
                 letterSpacing = 0.7.sp
             ),
             color = TextSecondary,
@@ -614,15 +627,16 @@ private fun XGameMonitorMetricTile(
             .background(XGameGraphiteElevated.copy(alpha = 0.88f))
             .border(1.dp, XGameSteelBorder, shape)
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
-            .padding(horizontal = 7.dp, vertical = 4.dp)
+            .padding(horizontal = 7.dp, vertical = 3.dp)
     ) {
-        Text(text = label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp, letterSpacing = 0.7.sp), color = TextMuted, maxLines = 1)
+        Text(text = label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp, lineHeight = 10.sp, letterSpacing = 0.7.sp), color = TextMuted, maxLines = 1)
         Text(
             text = value,
             style = MaterialTheme.typography.labelMedium.copy(
                 fontFamily = RajdhaniFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 11.5.sp
+                fontSize = 11.sp,
+                lineHeight = 13.sp
             ),
             color = valueColor,
             maxLines = 1,
@@ -685,7 +699,7 @@ internal fun XGameCenterGameplayFrame(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = if (compactHeight) 8.dp else 11.dp),
+                .padding(horizontal = 12.dp, vertical = if (compactHeight) 5.dp else 11.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
@@ -695,7 +709,7 @@ internal fun XGameCenterGameplayFrame(
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color(0xB8090B12))
                     .border(1.dp, XGameNeonRed.copy(alpha = 0.38f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = 10.dp, vertical = if (compactHeight) 2.dp else 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -704,6 +718,8 @@ internal fun XGameCenterGameplayFrame(
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp,
                         letterSpacing = 0.8.sp
                     ),
                     color = EmeraldBright
@@ -713,6 +729,8 @@ internal fun XGameCenterGameplayFrame(
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp,
                         letterSpacing = 1.sp
                     ),
                     color = XGameNeonRed
@@ -721,7 +739,9 @@ internal fun XGameCenterGameplayFrame(
                     text = "${targetHz}Hz TARGET",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = RajdhaniFontFamily,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp
                     ),
                     color = ElectricCyan
                 )
@@ -729,19 +749,19 @@ internal fun XGameCenterGameplayFrame(
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(if (compactHeight) 4.dp else 7.dp),
+                verticalArrangement = Arrangement.spacedBy(if (compactHeight) 2.dp else 7.dp),
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+                    .padding(vertical = if (compactHeight) 2.dp else 4.dp)
             ) {
                 Spacer(modifier = Modifier.weight(0.5f))
                 Box(
                     modifier = Modifier
-                        .size(if (compactHeight) 56.dp else 76.dp)
-                        .clip(CutCornerShape(14.dp))
+                        .size(if (compactHeight) 34.dp else 76.dp)
+                        .clip(CutCornerShape(if (compactHeight) 9.dp else 14.dp))
                         .background(XGameGraphiteElevated)
-                        .border(2.dp, XGameNeonRed.copy(alpha = 0.9f), CutCornerShape(14.dp))
+                        .border(2.dp, XGameNeonRed.copy(alpha = 0.9f), CutCornerShape(if (compactHeight) 9.dp else 14.dp))
                         .clickable { if (selectedGame == null) onNavigateAddApps() else onStartPlay() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -757,7 +777,7 @@ internal fun XGameCenterGameplayFrame(
                             imageVector = Icons.Rounded.SportsEsports,
                             contentDescription = "Add Game",
                             tint = XGameNeonRed,
-                            modifier = Modifier.size(if (compactHeight) 28.dp else 36.dp)
+                            modifier = Modifier.size(if (compactHeight) 20.dp else 36.dp)
                         )
                     }
                 }
@@ -767,7 +787,8 @@ internal fun XGameCenterGameplayFrame(
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = if (compactHeight) 16.sp else 20.sp,
+                        fontSize = if (compactHeight) 15.sp else 20.sp,
+                        lineHeight = if (compactHeight) 18.sp else 24.sp,
                         letterSpacing = 1.sp
                     ),
                     color = Color.White,
@@ -782,7 +803,10 @@ internal fun XGameCenterGameplayFrame(
                     } else {
                         "Tap + to arm games inside X-Game Space"
                     },
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = if (compactHeight) 9.5.sp else 10.sp,
+                        lineHeight = 12.sp
+                    ),
                     color = TextSecondary,
                     maxLines = 1
                 )
@@ -791,15 +815,18 @@ internal fun XGameCenterGameplayFrame(
                     onClick = { if (selectedGame == null) onNavigateAddApps() else onStartPlay() },
                     colors = ButtonDefaults.buttonColors(containerColor = XGameNeonRed, contentColor = Color.White),
                     shape = btnShape,
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 6.dp),
+                    contentPadding = PaddingValues(
+                        horizontal = if (compactHeight) 16.dp else 20.dp,
+                        vertical = if (compactHeight) 2.dp else 6.dp
+                    ),
                     modifier = Modifier
                         .testTag("xgame_launch_btn")
-                        .height(if (compactHeight) 34.dp else 42.dp)
+                        .height(if (compactHeight) 32.dp else 42.dp)
                 ) {
                     Icon(
                         imageVector = if (selectedGame == null) Icons.Rounded.Add else Icons.Rounded.PlayArrow,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(if (compactHeight) 16.dp else 18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -830,7 +857,7 @@ internal fun XGameCenterGameplayFrame(
                         }
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(if (compactHeight) 26.dp else 34.dp)
                                 .clip(CutCornerShape(7.dp))
                                 .background(if (active) XGameNeonRed.copy(alpha = 0.25f) else XGameGraphiteElevated)
                                 .border(
@@ -1041,6 +1068,7 @@ internal fun XGameBottomCommandBar(
     volumeFraction: Float,
     isOverlayServiceRunning: Boolean,
     compact: Boolean,
+    compactHeight: Boolean = compact,
     onBrightnessChange: (Float) -> Unit,
     onVolumeChange: (Float) -> Unit,
     onBoostRam: () -> Unit,
@@ -1056,12 +1084,12 @@ internal fun XGameBottomCommandBar(
             .clip(barShape)
             .background(XGameGraphite.copy(alpha = 0.96f))
             .border(1.dp, XGameNeonRed.copy(alpha = 0.55f), barShape)
-            .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = if (compact) 4.dp else 6.dp),
+            .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = if (compact || compactHeight) 3.dp else 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TurboXLogoMark(accentColor = XGameNeonRed, modifier = Modifier.size(if (compact) 20.dp else 24.dp))
+            TurboXLogoMark(accentColor = XGameNeonRed, modifier = Modifier.size(if (compact || compactHeight) 20.dp else 24.dp))
             Column {
                 Text(
                     text = buildAnnotatedString {
@@ -1070,14 +1098,15 @@ internal fun XGameBottomCommandBar(
                     },
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontFamily = RajdhaniFontFamily,
-                        fontSize = if (compact) 13.sp else 15.sp,
+                        fontSize = if (compact || compactHeight) 13.sp else 15.sp,
+                        lineHeight = if (compact || compactHeight) 16.sp else 18.sp,
                         letterSpacing = 1.4.sp
                     )
                 )
-                if (!compact) {
+                if (!compact && !compactHeight) {
                     Text(
                         text = "$totalBoostCount BOOSTS",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 0.8.sp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, lineHeight = 10.sp, letterSpacing = 0.8.sp),
                         color = TextMuted
                     )
                 }

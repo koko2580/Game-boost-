@@ -39,6 +39,14 @@ jobs:
         with:
           gradle-version: 9.3.1
 
+      - name: Cache Robolectric Android All Artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: ${{ runner.os }}-robolectric-sdk36-${{ hashFiles('app/build.gradle.kts', 'gradle/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-robolectric-sdk36-
+
       - name: Prepare Debug Keystore
         run: |
           if [ -f debug.keystore.base64 ]; then
@@ -67,7 +75,10 @@ jobs:
           fi
 
       - name: Run Unit Tests
-        run: gradle :app:testDebugUnitTest --no-daemon
+        run: >
+          gradle :app:testDebugUnitTest --no-daemon --max-workers=2
+          -Drobolectric.dependency.repo.url=https://maven-central.storage-download.googleapis.com/maven2
+          -Drobolectric.dependency.repo.id=google-maven-central-mirror
 
       - name: Run Android Lint
         run: gradle :app:lintDebug --no-daemon

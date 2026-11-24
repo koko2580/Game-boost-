@@ -205,7 +205,15 @@ data class GameTurboSettings(
     // Turbo Time Credit (Rewarded Ad Gate)
     val turboTimeExpiresAtMs: Long = 0L,
     val adsWatchedCount: Int = 0,
-    val hasCompletedPermissionSetup: Boolean = false
+    val hasCompletedPermissionSetup: Boolean = false,
+    // Super High Performance Mode (Selected Game Only)
+    val superPerfSelectedGamePackage: String? = null,
+    val superPerfAd1Watched: Boolean = false,
+    val superPerfAd2Watched: Boolean = false,
+    val superPerfUnlocked: Boolean = false,
+    val superPerfUnlockedAtMs: Long = 0L,
+    val superPerfWarningAccepted: Boolean = false,
+    val superPerfAutoStartOnLaunch: Boolean = true
 )
 
 const val AD_REWARD_DURATION_MS: Long = 3_600_000L // 1 hour per ad

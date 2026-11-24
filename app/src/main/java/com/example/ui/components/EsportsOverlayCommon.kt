@@ -155,8 +155,8 @@ internal fun EsportsHalfDockShell(
     rootTag: String,
     onDismissToHandle: () -> Unit,
     modifier: Modifier = Modifier,
-    maxLandscapeWidthFraction: Float = 0.49f,
-    maxLandscapeWidthDp: Dp = 436.dp,
+    maxLandscapeWidthFraction: Float = 0.46f,
+    maxLandscapeWidthDp: Dp = 400.dp,
     maxPortraitHeightFraction: Float = 0.62f,
     panelContent: @Composable BoxScope.(dockEdge: DockEdge, dockWidthFraction: Dp) -> Unit
 ) {
@@ -176,7 +176,6 @@ internal fun EsportsHalfDockShell(
     }
 
     val scrimInteraction = remember { MutableInteractionSource() }
-    val panelClickShield = remember { MutableInteractionSource() }
     var dragAccum by remember { mutableFloatStateOf(0f) }
 
     BoxWithConstraints(
@@ -258,11 +257,9 @@ internal fun EsportsHalfDockShell(
                             }
                         }
                     }
-                    .clickable(
-                        interactionSource = panelClickShield,
-                        indication = null,
-                        onClick = {}
-                    )
+                    .pointerInput(Unit) {
+                        detectTapGestures { /* shield panel surface from dismissing via scrim without merging child semantics */ }
+                    }
             ) {
                 panelContent(dockEdge, targetWidth)
             }
@@ -321,7 +318,6 @@ internal fun RogBottomCockpitShell(
     }
 
     val scrimInteraction = remember { MutableInteractionSource() }
-    val panelClickShield = remember { MutableInteractionSource() }
     var dragAccumY by remember { mutableFloatStateOf(0f) }
 
     BoxWithConstraints(
@@ -394,11 +390,9 @@ internal fun RogBottomCockpitShell(
                             }
                         }
                     }
-                    .clickable(
-                        interactionSource = panelClickShield,
-                        indication = null,
-                        onClick = {}
-                    )
+                    .pointerInput(Unit) {
+                        detectTapGestures { /* shield panel surface from dismissing via scrim without merging child semantics */ }
+                    }
             ) {
                 panelContent(targetWidth, maxPanelHeight)
             }

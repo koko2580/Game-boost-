@@ -41,6 +41,14 @@ data class SealedTurboCredit(
     val clockTamperDetected: Boolean = false
 )
 
+data class SealedSuperPerfUnlock(
+    val ad1Watched: Boolean = false,
+    val ad2Watched: Boolean = false,
+    val unlocked: Boolean = false,
+    val unlockedAtWallMs: Long = 0L,
+    val tampered: Boolean = false
+)
+
 class AppSecurityGuard(private val context: Context) {
 
     companion object {
@@ -342,6 +350,74 @@ class AppSecurityGuard(private val context: Context) {
             )
         }.getOrElse {
             SealedTurboCredit(expiresAtWallMs = 0L, adsWatchedCount = 0, effectiveRemainingSeconds = 0L, tampered = true)
+        }
+    }
+
+    fun sealSuperPerfUnlock(
+        ad1Watched: Boolean,
+        ad2Watched: Boolean,
+        unlocked: Boolean,
+        unlockedAtWallMs: Long
+    ): String? {
+        val key = getOrCreateVaultKey() ?: return null
+        val normalizedAd2 = ad1Watched && ad2Watched
+        val normalizedUnlocked = ad1Watched && normalizedAd2 && unlocked
+        val flags = (if (ad1Watched) 1 else 0) or
+            (if (normalizedAd2) 2 else 0) or
+            (if (normalizedUnlocked) 4 else 0)
+        val buffer = ByteBuffer.allocate(1 + 4 + 8)
+            .put(VAULT_VERSION)
+            .putInt(flags)
+            .putLong(unlockedAtWallMs.coerceAtLeast(0L))
+
+        return runCatching {
+            val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+            cipher.init(Cipher.ENCRYPT_MODE, key)
+            cipher.updateAAD(buildAad())
+            val iv = cipher.iv
+            val encrypted = cipher.doFinal(buffer.array())
+            val ivB64 = Base64.encodeToString(iv, Base64.NO_WRAP)
+            val dataB64 = Base64.encodeToString(encrypted, Base64.NO_WRAP)
+            "$ivB64.$dataB64"
+        }.getOrNull()
+    }
+
+    fun unsealSuperPerfUnlock(token: String?): SealedSuperPerfUnlock {
+        if (token.isNullOrBlank()) {
+            return SealedSuperPerfUnlock()
+        }
+        val parts = token.split('.')
+        if (parts.size != 2) {
+            return SealedSuperPerfUnlock(tampered = true)
+        }
+        val key = getOrCreateVaultKey() ?: return SealedSuperPerfUnlock(tampered = true)
+
+        return runCatching {
+            val iv = Base64.decode(parts[0], Base64.NO_WRAP)
+            val encrypted = Base64.decode(parts[1], Base64.NO_WRAP)
+            val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
+            cipher.updateAAD(buildAad())
+            val plain = cipher.doFinal(encrypted)
+            val buf = ByteBuffer.wrap(plain)
+            val version = buf.get()
+            if (version != VAULT_VERSION) {
+                return@runCatching SealedSuperPerfUnlock(tampered = true)
+            }
+            val flags = buf.int
+            val unlockedAt = buf.long
+            val ad1 = (flags and 1) != 0
+            val ad2 = ad1 && ((flags and 2) != 0)
+            val unlocked = ad1 && ad2 && ((flags and 4) != 0)
+            SealedSuperPerfUnlock(
+                ad1Watched = ad1,
+                ad2Watched = ad2,
+                unlocked = unlocked,
+                unlockedAtWallMs = unlockedAt,
+                tampered = false
+            )
+        }.getOrElse {
+            SealedSuperPerfUnlock(tampered = true)
         }
     }
 }
