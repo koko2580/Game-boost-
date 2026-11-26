@@ -43,11 +43,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import com.example.BuildConfig
+import com.example.R
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,7 +61,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -847,6 +851,9 @@ private fun AboutAppSection(
     onOpenPermissions: () -> Unit
 ) {
     val accent = LocalTurboAccent.current.accent
+    val uriHandler = LocalUriHandler.current
+    val privacyPolicyUrl = stringResource(R.string.privacy_policy_url)
+    val privacyPolicyLabel = stringResource(R.string.action_privacy_policy)
     val shortSig = securityAudit.signatureSha256.take(12).ifBlank { "Verified" }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
@@ -894,6 +901,12 @@ private fun AboutAppSection(
             colors = ButtonDefaults.buttonColors(containerColor = accent)
         ) {
             Text("Manage System Permissions")
+        }
+        OutlinedButton(
+            onClick = { runCatching { uriHandler.openUri(privacyPolicyUrl) } },
+            modifier = Modifier.testTag("privacy_policy_button")
+        ) {
+            Text(privacyPolicyLabel, color = TextPrimary)
         }
     }
 }

@@ -125,4 +125,13 @@ class ExampleRobolectricTest {
     assertEquals(false, com.example.network.NetworkGatePolicy.hasValidatedInternet(true, false))
     assertEquals(true, com.example.network.NetworkGatePolicy.hasValidatedInternet(true, true))
   }
+
+  @Test
+  fun `privacy policy url resource matches configured https endpoint`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    assertEquals(
+      "https://videodownloaderttk.blogspot.com/2026/11/turbo-x-game-space.html?m=1",
+      context.getString(R.string.privacy_policy_url)
+    )
+  }
 }
