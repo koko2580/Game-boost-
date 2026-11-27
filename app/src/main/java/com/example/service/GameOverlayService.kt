@@ -78,6 +78,7 @@ import com.example.data.CrosshairStyle
 import com.example.data.EqPreset
 import com.example.data.GameTurboPreferencesRepository
 import com.example.data.GameTurboSettings
+import com.example.data.GamingOverlayPerfController
 import com.example.data.HardwareTelemetry
 import com.example.data.ScreenColorMode
 import com.example.data.SystemHardwareController
@@ -124,6 +125,7 @@ class GameOverlayService : Service() {
     private lateinit var windowManager: WindowManager
     private lateinit var repo: GameTurboPreferencesRepository
     private lateinit var hardware: SystemHardwareController
+    private lateinit var overlayPerfController: GamingOverlayPerfController
     private var networkMonitor: NetworkGateMonitor? = null
     private var controlView: ComposeView? = null
     private var hudPassThroughView: ComposeView? = null
@@ -195,6 +197,7 @@ class GameOverlayService : Service() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         repo = GameTurboPreferencesRepository(applicationContext)
         hardware = SystemHardwareController(applicationContext)
+        overlayPerfController = GamingOverlayPerfController(hardware)
         networkMonitor = NetworkGateMonitor(applicationContext)
 
         createNotificationChannel()
@@ -296,6 +299,11 @@ class GameOverlayService : Service() {
                 if (stopwatchRunningFlow.value) {
                     stopwatchSecFlow.value += 1L
                 }
+                overlayPerfController.refreshDiagnostics(
+                    settings = settings,
+                    telemetry = snapshot,
+                    perfStatus = hardware.performanceEngine.status.value
+                )
 
                 if (settings.autoPerformanceOptimization) {
                     val decision = hardware.performanceEngine.evaluateAutoPerformance(
@@ -422,6 +430,8 @@ class GameOverlayService : Service() {
                 val stopwatchSec by stopwatchSecFlow.collectAsState()
                 val stopwatchRunning by stopwatchRunningFlow.collectAsState()
                 val statusMsg by statusMsgFlow.collectAsState()
+                val perfStatus by hardware.performanceEngine.status.collectAsState()
+                val overlayPerfState by overlayPerfController.uiState.collectAsState()
 
                 TurboGameXTheme(wallpaperTheme = settings.wallpaperTheme) {
                     if (isExpanded) {
@@ -435,7 +445,9 @@ class GameOverlayService : Service() {
                             stopwatchSeconds = stopwatchSec,
                             isStopwatchRunning = stopwatchRunning,
                             statusMessage = statusMsg,
-                            callbacks = createCallbacks(settings)
+                            callbacks = createCallbacks(settings),
+                            performanceStatus = perfStatus,
+                            overlayPerfState = overlayPerfState
                         )
                     } else {
                         FloatingTriggerHandle(
@@ -773,6 +785,136 @@ class GameOverlayService : Service() {
         onQuickApp = { pkgs, url ->
             toggleExpanded(false, settings.controlPanelLayout)
             hardware.launchQuickShortcut(pkgs, url)
+        },
+        onToggleCoolingEngine = { enabled ->
+            val snap = overlayPerfController.toggleCoolingEngine(
+                enable = enabled,
+                telemetry = telemetryFlow.value,
+                perfStatus = hardware.performanceEngine.status.value
+            )
+            showTransientStatus(
+                if (enabled) "X Cooling Engine: ${snap.batteryTempCelsius}°C (${snap.thermalStatusLabel})"
+                else "X Cooling Engine Stopped"
+            )
+        },
+        onApplyCoolingPrep = {
+            serviceScope.launch {
+                val kb = overlayPerfController.applyManualCoolingAction { t -> repo.updateSettings(t) }
+                overlayPerfController.refreshDiagnostics(latestSettings, telemetryFlow.value, hardware.performanceEngine.status.value)
+                showTransientStatus("Cool Prep applied • Cleared $kb KB cache")
+            }
+        },
+        onToggleEsportsMode = { enabled ->
+            serviceScope.launch {
+                val res = overlayPerfController.toggleEsportsMode(
+                    enable = enabled,
+                    currentSettings = settings,
+                    knownPackages = knownPackages,
+                    updateSettings = { t -> repo.updateSettings(t) }
+                )
+                overlayPerfController.refreshDiagnostics(latestSettings, telemetryFlow.value, hardware.performanceEngine.status.value)
+                showTransientStatus(
+                    if (enabled) "Esports Mode ON • Freed ${res?.freedMb ?: 0} MB"
+                    else "Esports Mode OFF • Restored"
+                )
+            }
+        },
+        onToggle60FpsStable = { enabled ->
+            serviceScope.launch {
+                overlayPerfController.toggle60FpsStable(
+                    enable = enabled,
+                    supportedModes = hardware.performanceEngine.status.value.supportedResolutionModes,
+                    updateSettings = { t -> repo.updateSettings(t) }
+                )
+                overlayPerfController.refreshDiagnostics(latestSettings, telemetryFlow.value, hardware.performanceEngine.status.value)
+                showTransientStatus(if (enabled) "60 FPS Stable ON" else "60 FPS Stable OFF")
+            }
+        },
+        onTogglePerformanceBoost = { enabled ->
+            serviceScope.launch {
+                val msg = overlayPerfController.togglePerformanceBoost(
+                    enable = enabled,
+                    currentSettings = settings,
+                    knownPackages = knownPackages,
+                    updateSettings = { t -> repo.updateSettings(t) }
+                )
+                overlayPerfController.refreshDiagnostics(latestSettings, telemetryFlow.value, hardware.performanceEngine.status.value)
+                showTransientStatus(msg)
+            }
+        },
+        onToggleFrameDropProtection = { enabled ->
+            serviceScope.launch {
+                overlayPerfController.toggleFrameDropProtection(enabled) { t -> repo.updateSettings(t) }
+                overlayPerfController.refreshDiagnostics(latestSettings, telemetryFlow.value, hardware.performanceEngine.status.value)
+            }
+        },
+        onSnoozeFrameDropWarning = {
+            serviceScope.launch {
+                overlayPerfController.snoozeFrameDropWarning(10) { t -> repo.updateSettings(t) }
+                overlayPerfController.refreshDiagnostics(latestSettings, telemetryFlow.value, hardware.performanceEngine.status.value)
+                showTransientStatus("Frame Drop alerts snoozed 10m")
+            }
+        },
+        onApplyFrameDropMitigation = {
+            serviceScope.launch {
+                overlayPerfController.applyFrameDropMitigation { t -> repo.updateSettings(t) }
+                overlayPerfController.refreshDiagnostics(latestSettings, telemetryFlow.value, hardware.performanceEngine.status.value)
+                showTransientStatus("Mitigation applied")
+            }
+        },
+        onSelectFpsOptTarget = { targetFps ->
+            serviceScope.launch {
+                overlayPerfController.selectFpsOptimizationTarget(
+                    targetFps = targetFps,
+                    consentGranted = settings.fpsOptDisplayConsent,
+                    supportedModes = hardware.performanceEngine.status.value.supportedResolutionModes,
+                    updateSettings = { t -> repo.updateSettings(t) }
+                )
+                overlayPerfController.refreshDiagnostics(latestSettings, telemetryFlow.value, hardware.performanceEngine.status.value)
+            }
+        },
+        onSetFpsOptDisplayConsent = { consent ->
+            serviceScope.launch {
+                if (consent && settings.fpsOptimizationTarget > 0) {
+                    overlayPerfController.selectFpsOptimizationTarget(
+                        targetFps = settings.fpsOptimizationTarget,
+                        consentGranted = true,
+                        supportedModes = hardware.performanceEngine.status.value.supportedResolutionModes,
+                        updateSettings = { t -> repo.updateSettings(t) }
+                    )
+                } else {
+                    repo.updateSettings { it.copy(fpsOptDisplayConsent = consent) }
+                }
+                overlayPerfController.refreshDiagnostics(latestSettings, telemetryFlow.value, hardware.performanceEngine.status.value)
+            }
+        },
+        onConfigureHighFps = { enabled, hz ->
+            serviceScope.launch {
+                overlayPerfController.configureHighFpsMode(
+                    enable = enabled,
+                    targetHz = hz,
+                    supportedModes = hardware.performanceEngine.status.value.supportedResolutionModes,
+                    updateSettings = { t -> repo.updateSettings(t) }
+                )
+                overlayPerfController.refreshDiagnostics(latestSettings, telemetryFlow.value, hardware.performanceEngine.status.value)
+                showTransientStatus(if (enabled) "High FPS ${hz}Hz Preference ON" else "High FPS Mode OFF")
+            }
+        },
+        onOpenDisplaySettings = {
+            toggleExpanded(false, settings.controlPanelLayout)
+            hardware.performanceEngine.openDisplaySettings()
+        },
+        onOpenBatterySaverSettings = {
+            toggleExpanded(false, settings.controlPanelLayout)
+            hardware.performanceEngine.openPowerSaverSettings()
+        },
+        onOpenSoundSettings = {
+            toggleExpanded(false, settings.controlPanelLayout)
+            hardware.performanceEngine.openSoundSettings()
+        },
+        onOpenAppSettings = {
+            toggleExpanded(false, settings.controlPanelLayout)
+            hardware.performanceEngine.openAppManagementSettings()
         }
     )
 

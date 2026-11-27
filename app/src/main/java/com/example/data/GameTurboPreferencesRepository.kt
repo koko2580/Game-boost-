@@ -101,6 +101,19 @@ class GameTurboPreferencesRepository(private val context: Context) {
         val SUPER_PERF_UNLOCK_VAULT = stringPreferencesKey("super_perf_unlock_vault_v1")
         val SUPER_PERF_WARNING_ACCEPTED = booleanPreferencesKey("super_perf_warning_accepted")
         val SUPER_PERF_AUTO_START = booleanPreferencesKey("super_perf_auto_start")
+        val ESPORTS_MODE_ENABLED = booleanPreferencesKey("overlay_esports_mode_enabled")
+        val ESPORTS_RESTORE_SNAPSHOT = stringPreferencesKey("overlay_esports_restore_snapshot")
+        val FPS_60_STABLE_ENABLED = booleanPreferencesKey("overlay_fps60_stable_enabled")
+        val FPS_RESTORE_SNAPSHOT = stringPreferencesKey("overlay_fps_restore_snapshot")
+        val PERF_BOOST_ACTIVE = booleanPreferencesKey("overlay_perf_boost_active")
+        val PERF_BOOST_RESTORE_SNAPSHOT = stringPreferencesKey("overlay_perf_boost_restore_snapshot")
+        val LAST_PERF_BOOST_SUMMARY = stringPreferencesKey("overlay_last_perf_boost_summary")
+        val FRAME_DROP_PROTECTION = booleanPreferencesKey("overlay_frame_drop_protection")
+        val FRAME_DROP_SNOOZE_UNTIL = longPreferencesKey("overlay_frame_drop_snooze_until")
+        val FPS_OPT_TARGET = intPreferencesKey("overlay_fps_opt_target")
+        val FPS_OPT_DISPLAY_CONSENT = booleanPreferencesKey("overlay_fps_opt_display_consent")
+        val HIGH_FPS_MODE_ENABLED = booleanPreferencesKey("overlay_high_fps_mode_enabled")
+        val HIGH_FPS_TARGET_HZ = intPreferencesKey("overlay_high_fps_target_hz")
     }
 
     val settingsFlow: Flow<GameTurboSettings> = context.dataStore.data.map { prefs ->
@@ -210,6 +223,19 @@ class GameTurboPreferencesRepository(private val context: Context) {
             }
             prefs[Keys.SUPER_PERF_WARNING_ACCEPTED] = updated.superPerfWarningAccepted
             prefs[Keys.SUPER_PERF_AUTO_START] = updated.superPerfAutoStartOnLaunch
+            prefs[Keys.ESPORTS_MODE_ENABLED] = updated.esportsModeEnabled
+            prefs[Keys.ESPORTS_RESTORE_SNAPSHOT] = updated.esportsRestoreSnapshot
+            prefs[Keys.FPS_60_STABLE_ENABLED] = updated.fps60StableEnabled
+            prefs[Keys.FPS_RESTORE_SNAPSHOT] = updated.fpsRestoreSnapshot
+            prefs[Keys.PERF_BOOST_ACTIVE] = updated.performanceBoostActive
+            prefs[Keys.PERF_BOOST_RESTORE_SNAPSHOT] = updated.perfBoostRestoreSnapshot
+            prefs[Keys.LAST_PERF_BOOST_SUMMARY] = updated.lastPerfBoostSummary
+            prefs[Keys.FRAME_DROP_PROTECTION] = updated.frameDropProtectionEnabled
+            prefs[Keys.FRAME_DROP_SNOOZE_UNTIL] = updated.frameDropAlertSnoozedUntilMs
+            prefs[Keys.FPS_OPT_TARGET] = updated.fpsOptimizationTarget
+            prefs[Keys.FPS_OPT_DISPLAY_CONSENT] = updated.fpsOptDisplayConsent
+            prefs[Keys.HIGH_FPS_MODE_ENABLED] = updated.highFpsModeEnabled
+            prefs[Keys.HIGH_FPS_TARGET_HZ] = updated.highFpsTargetHz
         }
     }
 
@@ -312,7 +338,20 @@ class GameTurboPreferencesRepository(private val context: Context) {
             superPerfUnlocked = unsealedSuper.unlocked,
             superPerfUnlockedAtMs = unsealedSuper.unlockedAtWallMs,
             superPerfWarningAccepted = prefs[Keys.SUPER_PERF_WARNING_ACCEPTED] ?: false,
-            superPerfAutoStartOnLaunch = prefs[Keys.SUPER_PERF_AUTO_START] ?: true
+            superPerfAutoStartOnLaunch = prefs[Keys.SUPER_PERF_AUTO_START] ?: true,
+            esportsModeEnabled = prefs[Keys.ESPORTS_MODE_ENABLED] ?: false,
+            esportsRestoreSnapshot = prefs[Keys.ESPORTS_RESTORE_SNAPSHOT] ?: "",
+            fps60StableEnabled = prefs[Keys.FPS_60_STABLE_ENABLED] ?: false,
+            fpsRestoreSnapshot = prefs[Keys.FPS_RESTORE_SNAPSHOT] ?: "",
+            performanceBoostActive = prefs[Keys.PERF_BOOST_ACTIVE] ?: false,
+            perfBoostRestoreSnapshot = prefs[Keys.PERF_BOOST_RESTORE_SNAPSHOT] ?: "",
+            lastPerfBoostSummary = prefs[Keys.LAST_PERF_BOOST_SUMMARY] ?: "",
+            frameDropProtectionEnabled = prefs[Keys.FRAME_DROP_PROTECTION] ?: true,
+            frameDropAlertSnoozedUntilMs = prefs[Keys.FRAME_DROP_SNOOZE_UNTIL] ?: 0L,
+            fpsOptimizationTarget = prefs[Keys.FPS_OPT_TARGET] ?: 0,
+            fpsOptDisplayConsent = prefs[Keys.FPS_OPT_DISPLAY_CONSENT] ?: false,
+            highFpsModeEnabled = prefs[Keys.HIGH_FPS_MODE_ENABLED] ?: false,
+            highFpsTargetHz = prefs[Keys.HIGH_FPS_TARGET_HZ] ?: 60
         )
     }
 

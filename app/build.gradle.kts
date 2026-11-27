@@ -64,7 +64,25 @@ android {
     compose = true
     buildConfig = true
   }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  testOptions {
+    unitTests {
+      isIncludeAndroidResources = true
+      all { test ->
+        test.maxHeapSize = "1536m"
+        test.jvmArgs("-XX:+UseG1GC")
+        test.forkEvery = 1
+        listOf(
+          "robolectric.dependency.repo.url",
+          "robolectric.dependency.repo.id",
+          "robolectric.offline"
+        ).forEach { prop ->
+          System.getProperty(prop)?.let { value ->
+            test.systemProperty(prop, value)
+          }
+        }
+      }
+    }
+  }
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true

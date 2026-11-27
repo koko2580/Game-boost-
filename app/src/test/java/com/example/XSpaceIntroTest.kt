@@ -213,7 +213,6 @@ class XSpaceIntroTest {
     @Config(sdk = [36], qualifiers = "w411dp-h915dp")
     fun `settings screen persists X Space intro and sound toggles`() {
         var currentSettings by mutableStateOf(GameTurboSettings())
-        composeTestRule.mainClock.autoAdvance = false
 
         composeTestRule.setContent {
             TurboGameXTheme {
@@ -262,9 +261,8 @@ class XSpaceIntroTest {
             }
         }
 
-        composeTestRule.mainClock.advanceTimeBy(100L)
+        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("settings_cat_OTHER").performScrollTo().performClick()
-        composeTestRule.mainClock.advanceTimeBy(150L)
         composeTestRule.waitForIdle()
 
         composeTestRule.onNodeWithTag("toggle_x_space_intro").performScrollTo().assertIsDisplayed().performClick()

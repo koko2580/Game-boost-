@@ -213,6 +213,14 @@ internal class PerformanceSystemInspector(private val context: Context) {
         return launchFirstResolvableIntent(candidates)
     }
 
+    fun openSoundSettings(): Boolean {
+        val candidates = listOf(
+            Settings.ACTION_SOUND_SETTINGS,
+            Settings.ACTION_SETTINGS
+        )
+        return launchFirstResolvableIntent(candidates)
+    }
+
     private fun launchFirstResolvableIntent(actions: List<String>): Boolean {
         for (action in actions) {
             val intent = Intent(action).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }

@@ -83,12 +83,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material.icons.rounded.Tune
 import com.example.data.CpuMode
 import com.example.data.CpuUnitFormat
 import com.example.data.EqPreset
 import com.example.data.GamePanelStyle
 import com.example.data.GameTurboSettings
+import com.example.data.GamingOverlayPerfUiState
 import com.example.data.HardwareTelemetry
+import com.example.data.PerformanceEngineStatus
 import com.example.data.ScreenColorMode
 import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.CyberBorder
@@ -133,7 +142,23 @@ data class OverlayCallbacks(
     val onToggleDnd: () -> Unit,
     val onOpenWifi: () -> Unit,
     val onScreenshotInfo: () -> Unit,
-    val onQuickApp: (List<String>, String) -> Unit
+    val onQuickApp: (List<String>, String) -> Unit,
+    // Gaming Overlay Performance Update (7 New Features)
+    val onToggleCoolingEngine: (Boolean) -> Unit = {},
+    val onApplyCoolingPrep: () -> Unit = {},
+    val onToggleEsportsMode: (Boolean) -> Unit = {},
+    val onToggle60FpsStable: (Boolean) -> Unit = {},
+    val onTogglePerformanceBoost: (Boolean) -> Unit = {},
+    val onToggleFrameDropProtection: (Boolean) -> Unit = {},
+    val onSnoozeFrameDropWarning: () -> Unit = {},
+    val onApplyFrameDropMitigation: () -> Unit = {},
+    val onSelectFpsOptTarget: (Int) -> Unit = {},
+    val onSetFpsOptDisplayConsent: (Boolean) -> Unit = {},
+    val onConfigureHighFps: (Boolean, Int) -> Unit = { _, _ -> },
+    val onOpenDisplaySettings: () -> Unit = {},
+    val onOpenBatterySaverSettings: () -> Unit = {},
+    val onOpenSoundSettings: () -> Unit = {},
+    val onOpenAppSettings: () -> Unit = {}
 )
 
 @Composable
@@ -148,7 +173,9 @@ fun GamePanelOverlayContent(
     isStopwatchRunning: Boolean,
     statusMessage: String?,
     callbacks: OverlayCallbacks,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    performanceStatus: PerformanceEngineStatus = PerformanceEngineStatus(),
+    overlayPerfState: GamingOverlayPerfUiState = GamingOverlayPerfUiState()
 ) {
     val palette = LocalTurboAccent.current
     val haptics = LocalHapticFeedback.current
@@ -160,6 +187,23 @@ fun GamePanelOverlayContent(
     var keyL1Y by remember { mutableFloatStateOf(0f) }
     var keyR1X by remember { mutableFloatStateOf(70f) }
     var keyR1Y by remember { mutableFloatStateOf(0f) }
+    var showPerfSuiteDrawer by remember { mutableStateOf(false) }
+    var selectedPerfTab by remember { mutableStateOf(PerfSuiteTab.COOLING) }
+
+    val esportsBorderAlpha = if (settings.esportsModeEnabled && !settings.lowRamOverlayMode) {
+        val inf = rememberInfiniteTransition(label = "esports_overlay_border")
+        val a by inf.animateFloat(
+            initialValue = 0.28f,
+            targetValue = 0.72f,
+            animationSpec = infiniteRepeatable(tween(1150, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "esports_border_alpha"
+        )
+        a
+    } else if (settings.esportsModeEnabled) {
+        0.55f
+    } else {
+        0f
+    }
 
     val leftTools = remember(
         telemetry.pingMs,
@@ -405,6 +449,90 @@ fun GamePanelOverlayContent(
                 Text("R1", style = MaterialTheme.typography.labelLarge, color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
+
+        if (esportsBorderAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .border(2.dp, panelAccent.copy(alpha = esportsBorderAlpha))
+            )
+        }
+
+        if (!showPerfSuiteDrawer) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .safeDrawingPadding()
+                    .padding(top = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .testTag("perf_suite_trigger_chip")
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(ObsidianVoid.copy(alpha = 0.90f))
+                        .border(
+                            1.2.dp,
+                            if (settings.esportsModeEnabled || overlayPerfState.xCoolingEngineActive) EmeraldBright else panelAccent.copy(alpha = 0.85f),
+                            RoundedCornerShape(999.dp)
+                        )
+                        .clickable {
+                            selectedPerfTab = PerfSuiteTab.COOLING
+                            showPerfSuiteDrawer = true
+                        }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Tune,
+                        contentDescription = "Open 7-mode Performance Suite",
+                        tint = panelAccent,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = buildString {
+                            append("PERF SUITE")
+                            if (overlayPerfState.xCoolingEngineActive) append(" • COOLING")
+                            if (settings.esportsModeEnabled) append(" • ESPORTS")
+                            if (settings.fps60StableEnabled) append(" • 60FPS")
+                            if (settings.highFpsModeEnabled) append(" • ${settings.highFpsTargetHz}HZ")
+                        },
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = RajdhaniFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.7.sp
+                        ),
+                        color = TextPrimary,
+                        maxLines = 1
+                    )
+                }
+
+                if (overlayPerfState.frameDropRisk.bannerVisible) {
+                    FrameDropAlertPill(
+                        riskLevel = overlayPerfState.frameDropRisk.level,
+                        onOpenGuard = {
+                            selectedPerfTab = PerfSuiteTab.FRAME_DROP
+                            showPerfSuiteDrawer = true
+                        },
+                        onSnooze = callbacks.onSnoozeFrameDropWarning
+                    )
+                }
+            }
+        }
+
+        OverlayPerformanceSuiteSheet(
+            visible = showPerfSuiteDrawer,
+            initialTab = selectedPerfTab,
+            settings = settings,
+            telemetry = telemetry,
+            perfStatus = performanceStatus,
+            perfState = overlayPerfState,
+            accent = panelAccent,
+            callbacks = callbacks,
+            onDismiss = { showPerfSuiteDrawer = false }
+        )
     }
 }
 

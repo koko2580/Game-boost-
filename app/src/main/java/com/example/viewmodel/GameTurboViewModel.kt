@@ -21,6 +21,8 @@ import com.example.data.GamePanelStyle
 import com.example.data.GameSessionRecord
 import com.example.data.GameTurboPreferencesRepository
 import com.example.data.GameTurboSettings
+import com.example.data.GamingOverlayPerfController
+import com.example.data.GamingOverlayPerfUiState
 import com.example.data.HardwareTelemetry
 import com.example.data.InstalledAppInfo
 import com.example.data.OneTapBoosterState
@@ -167,6 +169,9 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
 
     val extremeManager = ExtremePerformanceManager(application, repo, hardware)
     val extremeUiState: StateFlow<ExtremeUiState> = extremeManager.uiState
+
+    val overlayPerfController = GamingOverlayPerfController(hardware)
+    val overlayPerfState: StateFlow<GamingOverlayPerfUiState> = overlayPerfController.uiState
 
     private val _showSuperPerfWarningDialog = MutableStateFlow(false)
     val showSuperPerfWarningDialog: StateFlow<Boolean> = _showSuperPerfWarningDialog.asStateFlow()
@@ -435,6 +440,11 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
                         permissions = _permissions.value
                     )
                 }
+                overlayPerfController.refreshDiagnostics(
+                    settings = currentSettings,
+                    telemetry = snapshot,
+                    perfStatus = hardware.performanceEngine.status.value
+                )
                 val intervalMs = if (extremeManager.backgroundOptimizer.turboWorkloadsThrottled.value) 4000L else 1200L
                 delay(intervalMs)
             }
@@ -1684,11 +1694,183 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun openInAppOverlay() {
         hardware.audioEnhancer.pulseHaptic(false)
+        overlayPerfController.refreshDiagnostics(
+            settings = settings.value,
+            telemetry = _telemetry.value,
+            perfStatus = hardware.performanceEngine.status.value
+        )
         _isInAppOverlayOpen.value = true
     }
 
     fun closeInAppOverlay() {
         _isInAppOverlayOpen.value = false
+    }
+
+    // ---- Gaming Overlay Performance Update (7 New Features) ----
+
+    fun toggleCoolingEngine(enabled: Boolean) {
+        hardware.audioEnhancer.pulseHaptic(false)
+        val snap = overlayPerfController.toggleCoolingEngine(
+            enable = enabled,
+            telemetry = _telemetry.value,
+            perfStatus = hardware.performanceEngine.status.value
+        )
+        showStatus(
+            if (enabled) "X Cooling Engine Active • ${snap.batteryTempCelsius}°C (${snap.thermalStatusLabel})"
+            else "X Cooling Engine Stopped"
+        )
+    }
+
+    fun applyCoolingPrep() {
+        viewModelScope.launch {
+            val clearedKb = overlayPerfController.applyManualCoolingAction { transform ->
+                repo.updateSettings(transform)
+            }
+            refreshOverlayPerfDiagnostics()
+            showStatus("Cool Prep applied • Animations reduced & cleared $clearedKb KB cache")
+        }
+    }
+
+    fun toggleEsportsMode(enabled: Boolean) {
+        viewModelScope.launch {
+            val res = overlayPerfController.toggleEsportsMode(
+                enable = enabled,
+                currentSettings = settings.value,
+                knownPackages = _installedApps.value.map { it.packageName },
+                updateSettings = { transform -> repo.updateSettings(transform) }
+            )
+            refreshOverlayPerfDiagnostics()
+            showStatus(
+                if (enabled) "Gaming Esports Mode ON • Freed ${res?.freedMb ?: 0} MB"
+                else "Gaming Esports Mode OFF • Prior settings restored"
+            )
+        }
+    }
+
+    fun toggle60FpsStable(enabled: Boolean) {
+        viewModelScope.launch {
+            overlayPerfController.toggle60FpsStable(
+                enable = enabled,
+                supportedModes = hardware.performanceEngine.status.value.supportedResolutionModes,
+                updateSettings = { transform -> repo.updateSettings(transform) }
+            )
+            refreshOverlayPerfDiagnostics()
+            showStatus(
+                if (enabled) "60 FPS Stable Preference ON (Turbo X window 60Hz)"
+                else "60 FPS Stable OFF • Display preference restored"
+            )
+        }
+    }
+
+    fun togglePerformanceBoost(enabled: Boolean) {
+        viewModelScope.launch {
+            val summary = overlayPerfController.togglePerformanceBoost(
+                enable = enabled,
+                currentSettings = settings.value,
+                knownPackages = _installedApps.value.map { it.packageName },
+                updateSettings = { transform -> repo.updateSettings(transform) }
+            )
+            refreshOverlayPerfDiagnostics()
+            showStatus(summary)
+        }
+    }
+
+    fun toggleFrameDropProtection(enabled: Boolean) {
+        viewModelScope.launch {
+            overlayPerfController.toggleFrameDropProtection(enabled) { transform ->
+                repo.updateSettings(transform)
+            }
+            refreshOverlayPerfDiagnostics()
+            showStatus(if (enabled) "Frame Drop Protection ON" else "Frame Drop Protection Paused")
+        }
+    }
+
+    fun snoozeFrameDropWarning() {
+        viewModelScope.launch {
+            overlayPerfController.snoozeFrameDropWarning(10) { transform ->
+                repo.updateSettings(transform)
+            }
+            refreshOverlayPerfDiagnostics()
+            showStatus("Frame Drop warnings snoozed for 10 min")
+        }
+    }
+
+    fun applyFrameDropMitigation() {
+        viewModelScope.launch {
+            overlayPerfController.applyFrameDropMitigation { transform ->
+                repo.updateSettings(transform)
+            }
+            refreshOverlayPerfDiagnostics()
+            showStatus("Mitigation applied: Pacing & low-RAM overlay animations")
+        }
+    }
+
+    fun selectFpsOptTarget(targetFps: Int) {
+        viewModelScope.launch {
+            val s = settings.value
+            overlayPerfController.selectFpsOptimizationTarget(
+                targetFps = targetFps,
+                consentGranted = s.fpsOptDisplayConsent,
+                supportedModes = hardware.performanceEngine.status.value.supportedResolutionModes,
+                updateSettings = { transform -> repo.updateSettings(transform) }
+            )
+            refreshOverlayPerfDiagnostics()
+            showStatus(
+                when {
+                    targetFps == 0 -> "FPS Optimization cleared & prior target restored"
+                    s.fpsOptDisplayConsent -> "FPS Optimization: $targetFps FPS target + guide active"
+                    else -> "FPS Optimization guide: $targetFps FPS (display preference unchanged)"
+                }
+            )
+        }
+    }
+
+    fun setFpsOptDisplayConsent(consentGranted: Boolean) {
+        viewModelScope.launch {
+            val s = settings.value
+            if (consentGranted && s.fpsOptimizationTarget > 0) {
+                overlayPerfController.selectFpsOptimizationTarget(
+                    targetFps = s.fpsOptimizationTarget,
+                    consentGranted = true,
+                    supportedModes = hardware.performanceEngine.status.value.supportedResolutionModes,
+                    updateSettings = { transform -> repo.updateSettings(transform) }
+                )
+            } else {
+                repo.updateSettings { it.copy(fpsOptDisplayConsent = consentGranted) }
+            }
+            refreshOverlayPerfDiagnostics()
+        }
+    }
+
+    fun configureHighFpsMode(enabled: Boolean, targetHz: Int) {
+        viewModelScope.launch {
+            overlayPerfController.configureHighFpsMode(
+                enable = enabled,
+                targetHz = targetHz,
+                supportedModes = hardware.performanceEngine.status.value.supportedResolutionModes,
+                updateSettings = { transform -> repo.updateSettings(transform) }
+            )
+            refreshOverlayPerfDiagnostics()
+            showStatus(
+                if (enabled) "High FPS Mode: ${targetHz}Hz preference applied"
+                else "High FPS Mode OFF • Prior display target restored"
+            )
+        }
+    }
+
+    fun openSoundSettings() {
+        adMobManager?.suppressAppOpenTemporarily()
+        if (!hardware.performanceEngine.openSoundSettings()) {
+            showStatus("Open Device Settings -> Sound to adjust audio")
+        }
+    }
+
+    private fun refreshOverlayPerfDiagnostics() {
+        overlayPerfController.refreshDiagnostics(
+            settings = settings.value,
+            telemetry = _telemetry.value,
+            perfStatus = hardware.performanceEngine.status.value
+        )
     }
 
     fun startFloatingOverlayService() {

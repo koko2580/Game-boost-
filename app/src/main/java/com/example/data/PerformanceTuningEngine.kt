@@ -67,6 +67,8 @@ data class PerformanceEngineStatus(
     val frictionFactor: Float = 1.0f,
     val activeGpuPipelineLabel: String = "System Auto",
     val thermalStatusLabel: String = "NORMAL",
+    val thermalStatusCode: Int = 0,
+    val thermalHeadroomSeconds: Float? = null,
     val threadPriorityBoosted: Boolean = false,
     val gpuInfo: GpuPipelineInfo = GpuPipelineInfo()
 )
@@ -227,21 +229,35 @@ class PerformanceTuningEngine(private val context: Context) {
         return SLIDING_FRICTION_FACTORS[idx]
     }
 
+    fun readThermalStatusCode(): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return 0
+        return runCatching {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return 0
+            pm.currentThermalStatus
+        }.getOrDefault(0)
+    }
+
+    fun readThermalHeadroomSeconds(forecastSeconds: Int = 10): Float? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        return runCatching {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return null
+            val value = pm.getThermalHeadroom(forecastSeconds.coerceIn(0, 60))
+            if (value.isNaN() || value < 0f) null else value
+        }.getOrNull()
+    }
+
     fun readThermalStatusLabel(): String {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return "NORMAL"
-        return runCatching {
-            val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return "NORMAL"
-            when (pm.currentThermalStatus) {
-                PowerManager.THERMAL_STATUS_NONE -> "NORMAL"
-                PowerManager.THERMAL_STATUS_LIGHT -> "WARM"
-                PowerManager.THERMAL_STATUS_MODERATE -> "MODERATE"
-                PowerManager.THERMAL_STATUS_SEVERE -> "HIGH"
-                PowerManager.THERMAL_STATUS_CRITICAL,
-                PowerManager.THERMAL_STATUS_EMERGENCY,
-                PowerManager.THERMAL_STATUS_SHUTDOWN -> "THROTTLED"
-                else -> "NORMAL"
-            }
-        }.getOrDefault("NORMAL")
+        return when (readThermalStatusCode()) {
+            PowerManager.THERMAL_STATUS_NONE -> "NORMAL"
+            PowerManager.THERMAL_STATUS_LIGHT -> "WARM"
+            PowerManager.THERMAL_STATUS_MODERATE -> "MODERATE"
+            PowerManager.THERMAL_STATUS_SEVERE -> "HIGH"
+            PowerManager.THERMAL_STATUS_CRITICAL,
+            PowerManager.THERMAL_STATUS_EMERGENCY,
+            PowerManager.THERMAL_STATUS_SHUTDOWN -> "THROTTLED"
+            else -> "NORMAL"
+        }
     }
 
     fun applyProfile(
@@ -360,6 +376,8 @@ class PerformanceTuningEngine(private val context: Context) {
             frictionFactor = frictionFactor,
             activeGpuPipelineLabel = gpuLabel,
             thermalStatusLabel = thermalLabel,
+            thermalStatusCode = readThermalStatusCode(),
+            thermalHeadroomSeconds = readThermalHeadroomSeconds(),
             threadPriorityBoosted = priorityBoosted,
             gpuInfo = gpuInfo
         )
@@ -396,6 +414,8 @@ class PerformanceTuningEngine(private val context: Context) {
     fun openAppManagementSettings(): Boolean = inspector.openAppManagementSettings()
 
     fun openDisplaySettings(): Boolean = inspector.openDisplaySettings()
+
+    fun openSoundSettings(): Boolean = inspector.openSoundSettings()
 
     private fun applySystemPointerSpeed(pointerSpeed: Int): Boolean {
         if (!Settings.System.canWrite(context)) return false

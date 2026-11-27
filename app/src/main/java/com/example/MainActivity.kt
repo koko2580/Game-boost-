@@ -148,6 +148,7 @@ class MainActivity : ComponentActivity() {
             val rewardedAdError by viewModel.rewardedAdError.collectAsStateWithLifecycle()
             val rewardedCooldownSeconds by viewModel.rewardedCooldownSeconds.collectAsStateWithLifecycle()
             val performanceStatus by viewModel.performanceStatus.collectAsStateWithLifecycle()
+            val overlayPerfState by viewModel.overlayPerfState.collectAsStateWithLifecycle()
             val securityAudit by viewModel.securityAudit.collectAsStateWithLifecycle()
             val showSplash by viewModel.showSplash.collectAsStateWithLifecycle()
             val prefsLoaded by viewModel.prefsLoaded.collectAsStateWithLifecycle()
@@ -615,8 +616,25 @@ class MainActivity : ComponentActivity() {
                                 onToggleDnd = viewModel::toggleDoNotDisturb,
                                 onOpenWifi = viewModel.hardware::openWifiSettingsPanel,
                                 onScreenshotInfo = { viewModel.captureScreenshot(this@MainActivity) },
-                                onQuickApp = viewModel.hardware::launchQuickShortcut
-                            )
+                                onQuickApp = viewModel.hardware::launchQuickShortcut,
+                                onToggleCoolingEngine = viewModel::toggleCoolingEngine,
+                                onApplyCoolingPrep = viewModel::applyCoolingPrep,
+                                onToggleEsportsMode = viewModel::toggleEsportsMode,
+                                onToggle60FpsStable = viewModel::toggle60FpsStable,
+                                onTogglePerformanceBoost = viewModel::togglePerformanceBoost,
+                                onToggleFrameDropProtection = viewModel::toggleFrameDropProtection,
+                                onSnoozeFrameDropWarning = viewModel::snoozeFrameDropWarning,
+                                onApplyFrameDropMitigation = viewModel::applyFrameDropMitigation,
+                                onSelectFpsOptTarget = viewModel::selectFpsOptTarget,
+                                onSetFpsOptDisplayConsent = viewModel::setFpsOptDisplayConsent,
+                                onConfigureHighFps = viewModel::configureHighFpsMode,
+                                onOpenDisplaySettings = viewModel::openDisplaySettings,
+                                onOpenBatterySaverSettings = viewModel::openPowerSaverSettings,
+                                onOpenSoundSettings = viewModel::openSoundSettings,
+                                onOpenAppSettings = viewModel::openAppManagementSettings
+                            ),
+                            performanceStatus = performanceStatus,
+                            overlayPerfState = overlayPerfState
                         )
                     }
 

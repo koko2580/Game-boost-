@@ -215,7 +215,21 @@ data class GameTurboSettings(
     val superPerfUnlocked: Boolean = false,
     val superPerfUnlockedAtMs: Long = 0L,
     val superPerfWarningAccepted: Boolean = false,
-    val superPerfAutoStartOnLaunch: Boolean = true
+    val superPerfAutoStartOnLaunch: Boolean = true,
+    // Gaming Overlay Performance Suite (Persisted Toggles + Restore Snapshots)
+    val esportsModeEnabled: Boolean = false,
+    val esportsRestoreSnapshot: String = "",
+    val fps60StableEnabled: Boolean = false,
+    val fpsRestoreSnapshot: String = "",
+    val performanceBoostActive: Boolean = false,
+    val perfBoostRestoreSnapshot: String = "",
+    val lastPerfBoostSummary: String = "",
+    val frameDropProtectionEnabled: Boolean = true,
+    val frameDropAlertSnoozedUntilMs: Long = 0L,
+    val fpsOptimizationTarget: Int = 0, // 0=OFF, 30, 60, 90, 120
+    val fpsOptDisplayConsent: Boolean = false,
+    val highFpsModeEnabled: Boolean = false,
+    val highFpsTargetHz: Int = 60
 )
 
 const val AD_REWARD_DURATION_MS: Long = 3_600_000L // 1 hour per ad
