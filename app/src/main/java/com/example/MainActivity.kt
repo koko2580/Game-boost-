@@ -90,6 +90,7 @@ import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SuperHighPerformanceScreen
 import com.example.ui.screens.TurboSplashScreen
 import com.example.ui.screens.TurboXGamingPanel
+import com.example.ui.screens.XSpaceBlackHoleIntroScreen
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.EmeraldBright
 import com.example.ui.theme.LocalTurboAccent
@@ -105,6 +106,7 @@ private const val ROUTE_LAUNCHER = "launcher"
 private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_ADD_APPS = "add_apps"
 private const val ROUTE_PERMISSIONS = "permissions"
+private const val ROUTE_X_SPACE_INTRO = "x_space_intro"
 private const val ROUTE_X_GAME_SPACE = "x_game_space"
 private const val ROUTE_SUPER_PERF = PerformanceSessionService.ROUTE_SUPER_PERF
 
@@ -230,16 +232,6 @@ class MainActivity : ComponentActivity() {
                 lp.screenBrightness = if (settings.lockBrightness) brightness else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                 window.attributes = lp
             }
-            LaunchedEffect(settings.screenScalingWide) {
-                val controller = WindowCompat.getInsetsController(window, window.decorView)
-                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                if (settings.screenScalingWide) {
-                    controller.hide(WindowInsetsCompat.Type.systemBars())
-                } else {
-                    controller.show(WindowInsetsCompat.Type.systemBars())
-                }
-            }
-
             val touchConfig = remember(performanceStatus) {
                 TurboTouchConfig(
                     scrollMultiplier = performanceStatus.scrollMultiplier,
@@ -254,10 +246,21 @@ class MainActivity : ComponentActivity() {
                     val backStackEntry by navController.currentBackStackEntryAsState()
                     val currentRoute = backStackEntry?.destination?.route
 
+                    LaunchedEffect(settings.screenScalingWide, currentRoute) {
+                        val controller = WindowCompat.getInsetsController(window, window.decorView)
+                        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                        if (settings.screenScalingWide || currentRoute == ROUTE_X_SPACE_INTRO) {
+                            controller.hide(WindowInsetsCompat.Type.systemBars())
+                        } else {
+                            controller.show(WindowInsetsCompat.Type.systemBars())
+                        }
+                    }
+
                     LaunchedEffect(settings.rotationLock, currentRoute) {
                         requestedOrientation = when {
                             settings.rotationLock -> ActivityInfo.SCREEN_ORIENTATION_LOCKED
                             currentRoute == ROUTE_X_GAME_SPACE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            currentRoute == ROUTE_X_SPACE_INTRO -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                             else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                         }
                     }
@@ -307,10 +310,32 @@ class MainActivity : ComponentActivity() {
                                 onSelectWallpaperTheme = viewModel::setWallpaperTheme,
                                 onDismissStatus = viewModel::clearStatus,
                                 onNavigateXGameSpace = {
-                                    navController.navigate(ROUTE_X_GAME_SPACE) { launchSingleTop = true }
+                                    if (currentRoute == ROUTE_LAUNCHER) {
+                                        if (viewModel.shouldPlayXSpaceIntro()) {
+                                            navController.navigate(ROUTE_X_SPACE_INTRO) { launchSingleTop = true }
+                                        } else {
+                                            navController.navigate(ROUTE_X_GAME_SPACE) { launchSingleTop = true }
+                                        }
+                                    }
                                 },
                                 onNavigateSuperPerf = {
                                     navController.navigate(ROUTE_SUPER_PERF) { launchSingleTop = true }
+                                }
+                            )
+                        }
+
+                        composable(ROUTE_X_SPACE_INTRO) {
+                            XSpaceBlackHoleIntroScreen(
+                                settings = settings,
+                                onToggleMute = { soundEnabled ->
+                                    viewModel.setXSpaceIntroSoundEnabled(soundEnabled)
+                                },
+                                onFinished = {
+                                    viewModel.markXSpaceIntroPlayed()
+                                    navController.navigate(ROUTE_X_GAME_SPACE) {
+                                        popUpTo(ROUTE_X_SPACE_INTRO) { inclusive = true }
+                                        launchSingleTop = true
+                                    }
                                 }
                             )
                         }

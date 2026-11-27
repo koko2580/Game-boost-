@@ -525,6 +525,20 @@ private fun SettingsCategoryDetail(
                     onCheckedChange = { v -> onUpdateSettings { it.copy(homeAnimation = v) } }
                 )
                 SettingToggleRow(
+                    title = "X Space Black Hole Intro",
+                    subtitle = "Play the cosmic portal animation when entering X-Game Space.",
+                    checked = settings.xSpaceIntroEnabled,
+                    onCheckedChange = { v -> onUpdateSettings { it.copy(xSpaceIntroEnabled = v) } },
+                    testTag = "toggle_x_space_intro"
+                )
+                SettingToggleRow(
+                    title = "X Space Intro Sound Effects",
+                    subtitle = "Play synchronized cosmic portal audio during the X Space intro (respects media volume).",
+                    checked = settings.xSpaceIntroSoundEnabled,
+                    onCheckedChange = { v -> onUpdateSettings { it.copy(xSpaceIntroSoundEnabled = v) } },
+                    testTag = "toggle_x_space_intro_sound"
+                )
+                SettingToggleRow(
                     title = "Auto-detect game launch",
                     subtitle = "Automatically apply Turbo Boost and floating HUD when an added game comes to foreground (requires Usage Access).",
                     checked = settings.autoDetectGameLaunch,

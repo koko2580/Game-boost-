@@ -10,10 +10,14 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -21,9 +25,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -55,6 +61,7 @@ import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.SportsEsports
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.WbSunny
@@ -62,19 +69,21 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -84,8 +93,12 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -146,17 +159,17 @@ internal fun XGameSpaceBackdropCanvas(
             drawLine(ElectricCyan.copy(alpha = 0.03f), Offset(0f, gy), Offset(size.width, gy), strokeWidth = 1f)
             gy += step
         }
-        val railW = 4.dp.toPx()
+        val railW = 3.dp.toPx()
         drawRect(
             brush = Brush.verticalGradient(
-                colors = listOf(Color.Transparent, XGameNeonRed.copy(alpha = 0.68f * pulseAlpha), Color.Transparent)
+                colors = listOf(Color.Transparent, XGameNeonRed.copy(alpha = 0.65f * pulseAlpha), Color.Transparent)
             ),
             topLeft = Offset(0f, size.height * 0.14f),
             size = Size(railW, size.height * 0.72f)
         )
         drawRect(
             brush = Brush.verticalGradient(
-                colors = listOf(Color.Transparent, XGameNeonRed.copy(alpha = 0.68f * pulseAlpha), Color.Transparent)
+                colors = listOf(Color.Transparent, XGameNeonRed.copy(alpha = 0.65f * pulseAlpha), Color.Transparent)
             ),
             topLeft = Offset(size.width - railW, size.height * 0.14f),
             size = Size(railW, size.height * 0.72f)
@@ -171,6 +184,7 @@ internal fun XGameTopStatusBar(
     remainingTurboSeconds: Long,
     permissions: PermissionStatus,
     compact: Boolean,
+    compactHeight: Boolean = compact,
     onBack: () -> Unit,
     onAddTurboTime: () -> Unit,
     onNavigateAddApps: () -> Unit,
@@ -180,6 +194,7 @@ internal fun XGameTopStatusBar(
     val badgeShape = CutCornerShape(topStart = 8.dp, bottomEnd = 8.dp, topEnd = 2.dp, bottomStart = 2.dp)
     val minsRemaining = (remainingTurboSeconds / 60L).coerceAtLeast(0L)
     val timeLabel = if (remainingTurboSeconds <= 0L) "BOOST TIME" else String.format(Locale.US, "%02d:%02d", minsRemaining / 60L, minsRemaining % 60L)
+    val tightVertical = compact || compactHeight
 
     Row(
         modifier = Modifier
@@ -187,7 +202,7 @@ internal fun XGameTopStatusBar(
             .clip(badgeShape)
             .background(XGameGraphite.copy(alpha = 0.94f))
             .border(1.dp, XGameNeonRed.copy(alpha = 0.55f), badgeShape)
-            .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = if (compact) 4.dp else 6.dp),
+            .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = if (tightVertical) 4.dp else 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -199,7 +214,7 @@ internal fun XGameTopStatusBar(
                 modifier = Modifier
                     .testTag("xgame_back_btn")
                     .minimumInteractiveComponentSize()
-                    .size(if (compact) 32.dp else 36.dp)
+                    .size(if (tightVertical) 32.dp else 36.dp)
                     .clip(badgeShape)
                     .background(XGameGraphiteElevated)
                     .border(1.dp, XGameNeonRed.copy(alpha = 0.65f), badgeShape)
@@ -221,13 +236,13 @@ internal fun XGameTopStatusBar(
                     },
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontFamily = RajdhaniFontFamily,
-                        fontSize = if (compact) 15.sp else 17.sp,
-                        lineHeight = if (compact) 18.sp else 20.sp,
+                        fontSize = if (tightVertical) 15.sp else 17.sp,
+                        lineHeight = if (tightVertical) 18.sp else 20.sp,
                         letterSpacing = 1.6.sp
                     ),
                     maxLines = 1
                 )
-                if (!compact) {
+                if (!tightVertical) {
                     Text(
                         text = "TURBO X ENGINE HUD",
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp, lineHeight = 11.sp, letterSpacing = 1.2.sp),
@@ -239,8 +254,12 @@ internal fun XGameTopStatusBar(
         }
 
         Row(
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 6.dp)
+                .horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp, Alignment.CenterHorizontally)
         ) {
             if (!compact) {
                 Text(
@@ -414,6 +433,7 @@ internal fun XGamePerformanceLeftPanel(
             )
         }
 
+        val fpsCap = maxOf(settings.frameRateTarget, 60).toFloat()
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -422,7 +442,7 @@ internal fun XGamePerformanceLeftPanel(
             XGameArcDialGauge(
                 valueText = cpuFormatted,
                 unitText = cpuUnit,
-                titleText = "CPU",
+                titleText = "CPU CLOCK",
                 progress = (telemetry.cpuFreqMHz / 3200f).coerceIn(0.18f, 1f),
                 arcColor = XGameNeonRed,
                 pulseAlpha = pulseAlpha,
@@ -432,8 +452,8 @@ internal fun XGamePerformanceLeftPanel(
             XGameArcDialGauge(
                 valueText = "${telemetry.actualFps}",
                 unitText = "FPS",
-                titleText = "RAM ${telemetry.ramUsedPercent}%",
-                progress = (telemetry.ramUsedPercent / 100f).coerceIn(0.12f, 1f),
+                titleText = "FRAME RATE",
+                progress = (telemetry.actualFps / fpsCap).coerceIn(0.15f, 1f),
                 arcColor = ElectricCyan,
                 pulseAlpha = pulseAlpha,
                 compact = compactHeight,
@@ -444,22 +464,31 @@ internal fun XGamePerformanceLeftPanel(
         Column(verticalArrangement = Arrangement.spacedBy(if (compactHeight) 3.dp else 4.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                XGameMonitorMetricTile(
+                    label = "RAM",
+                    value = "${telemetry.ramUsedPercent}%",
+                    valueColor = if (telemetry.ramUsedPercent >= 85) CyberAmber else ElectricCyan,
+                    shape = chipShape,
+                    modifier = Modifier.weight(0.85f)
+                )
                 XGameMonitorMetricTile(
                     label = "THERMAL",
                     value = "${telemetry.batteryTempCelsius}°C",
                     valueColor = if (telemetry.batteryTempCelsius >= 41f) CyberAmber else EmeraldBright,
                     shape = chipShape,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1.05f)
                 )
                 XGameMonitorMetricTile(
-                    label = "NETWORK",
-                    value = telemetry.pingMs?.let { "${it}ms" } ?: "PING",
+                    label = "PING",
+                    value = telemetry.pingMs?.let { "${it}ms" } ?: "TAP",
                     valueColor = ElectricCyan,
                     shape = chipShape,
                     onClick = onRunPingTest,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(0.9f)
+                        .testTag("xgame_ping_tile")
                 )
             }
             if (!compactHeight) {
@@ -532,7 +561,7 @@ private fun XGameArcDialGauge(
     compact: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val dialSize = if (compact) 48.dp else 88.dp
+    val dialSize = if (compact) 50.dp else 86.dp
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -540,7 +569,7 @@ private fun XGameArcDialGauge(
     ) {
         Box(modifier = Modifier.size(dialSize), contentAlignment = Alignment.Center) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val strokeW = 5.dp.toPx()
+                val strokeW = (if (compact) 4.2.dp else 5.dp).toPx()
                 val pad = strokeW * 0.9f
                 val arcSize = Size(size.width - pad * 2f, size.height - pad * 2f)
                 val topLeft = Offset(pad, pad)
@@ -579,8 +608,8 @@ private fun XGameArcDialGauge(
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = if (compact) 12.sp else 18.sp,
-                        lineHeight = if (compact) 14.sp else 21.sp
+                        fontSize = if (compact) 13.sp else 18.sp,
+                        lineHeight = if (compact) 15.sp else 21.sp
                     ),
                     color = Color.White,
                     maxLines = 1
@@ -588,7 +617,7 @@ private fun XGameArcDialGauge(
                 Text(
                     text = unitText,
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = if (compact) 7.sp else 8.sp,
+                        fontSize = if (compact) 7.5.sp else 8.sp,
                         lineHeight = 9.sp,
                         fontWeight = FontWeight.Bold
                     ),
@@ -627,7 +656,7 @@ private fun XGameMonitorMetricTile(
             .background(XGameGraphiteElevated.copy(alpha = 0.88f))
             .border(1.dp, XGameSteelBorder, shape)
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
-            .padding(horizontal = 7.dp, vertical = 3.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
         Text(text = label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp, lineHeight = 10.sp, letterSpacing = 0.7.sp), color = TextMuted, maxLines = 1)
         Text(
@@ -755,13 +784,13 @@ internal fun XGameCenterGameplayFrame(
                     .fillMaxWidth()
                     .padding(vertical = if (compactHeight) 2.dp else 4.dp)
             ) {
-                Spacer(modifier = Modifier.weight(0.5f))
+                Spacer(modifier = Modifier.weight(0.45f))
                 Box(
                     modifier = Modifier
-                        .size(if (compactHeight) 34.dp else 76.dp)
-                        .clip(CutCornerShape(if (compactHeight) 9.dp else 14.dp))
+                        .size(if (compactHeight) 42.dp else 76.dp)
+                        .clip(CutCornerShape(if (compactHeight) 10.dp else 14.dp))
                         .background(XGameGraphiteElevated)
-                        .border(2.dp, XGameNeonRed.copy(alpha = 0.9f), CutCornerShape(if (compactHeight) 9.dp else 14.dp))
+                        .border(2.dp, XGameNeonRed.copy(alpha = 0.9f), CutCornerShape(if (compactHeight) 10.dp else 14.dp))
                         .clickable { if (selectedGame == null) onNavigateAddApps() else onStartPlay() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -777,7 +806,7 @@ internal fun XGameCenterGameplayFrame(
                             imageVector = Icons.Rounded.SportsEsports,
                             contentDescription = "Add Game",
                             tint = XGameNeonRed,
-                            modifier = Modifier.size(if (compactHeight) 20.dp else 36.dp)
+                            modifier = Modifier.size(if (compactHeight) 22.dp else 36.dp)
                         )
                     }
                 }
@@ -787,8 +816,8 @@ internal fun XGameCenterGameplayFrame(
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontFamily = RajdhaniFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = if (compactHeight) 15.sp else 20.sp,
-                        lineHeight = if (compactHeight) 18.sp else 24.sp,
+                        fontSize = if (compactHeight) 16.sp else 20.sp,
+                        lineHeight = if (compactHeight) 19.sp else 24.sp,
                         letterSpacing = 1.sp
                     ),
                     color = Color.White,
@@ -816,12 +845,12 @@ internal fun XGameCenterGameplayFrame(
                     colors = ButtonDefaults.buttonColors(containerColor = XGameNeonRed, contentColor = Color.White),
                     shape = btnShape,
                     contentPadding = PaddingValues(
-                        horizontal = if (compactHeight) 16.dp else 20.dp,
-                        vertical = if (compactHeight) 2.dp else 6.dp
+                        horizontal = if (compactHeight) 18.dp else 20.dp,
+                        vertical = if (compactHeight) 4.dp else 6.dp
                     ),
                     modifier = Modifier
                         .testTag("xgame_launch_btn")
-                        .height(if (compactHeight) 32.dp else 42.dp)
+                        .height(if (compactHeight) 34.dp else 42.dp)
                 ) {
                     Icon(
                         imageVector = if (selectedGame == null) Icons.Rounded.Add else Icons.Rounded.PlayArrow,
@@ -838,7 +867,7 @@ internal fun XGameCenterGameplayFrame(
                         )
                     )
                 }
-                Spacer(modifier = Modifier.weight(0.5f))
+                Spacer(modifier = Modifier.weight(0.45f))
             }
 
             if (addedGames.isNotEmpty()) {
@@ -942,7 +971,10 @@ internal fun XGameControlsRightPanel(
         )
     }
 
-    Column(
+    var currentPage by remember { mutableIntStateOf(0) }
+    val pagePillShape = CutCornerShape(5.dp)
+
+    BoxWithConstraints(
         modifier = modifier
             .clip(panelShape)
             .background(Brush.verticalGradient(listOf(XGameGraphite.copy(alpha = 0.95f), Color(0xEB08090F))))
@@ -953,45 +985,114 @@ internal fun XGameControlsRightPanel(
                 ),
                 shape = panelShape
             )
-            .padding(horizontal = 9.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(horizontal = 9.dp, vertical = 7.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "GAMING CONTROLS",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = RajdhaniFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp,
-                    fontSize = 10.sp
-                ),
-                color = XGameNeonRed
-            )
-            Text(
-                text = "${controls.count { it.active }} ACTIVE",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = RajdhaniFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 9.5.sp
-                ),
-                color = EmeraldBright
-            )
-        }
+        // Use 2 clean 3x2 pages when vertical height cannot fit all 4 rows cleanly without clipping
+        val usePagedGrid = scrollableGrid && maxHeight < 260.dp
+        val pageCount = 2
+        val activePage = currentPage.coerceIn(0, pageCount - 1)
 
-        val rows = remember(controls) { controls.chunked(3) }
-        val gridModifier = if (scrollableGrid) {
-            Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
-        } else {
-            Modifier.fillMaxWidth()
-        }
-        Column(modifier = gridModifier, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            rows.forEach { rowItems ->
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    rowItems.forEach { item -> XGameControlTile(spec = item, modifier = Modifier.weight(1f)) }
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "GAMING CONTROLS",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = RajdhaniFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.0.sp,
+                        fontSize = 10.sp
+                    ),
+                    color = XGameNeonRed,
+                    maxLines = 1
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Text(
+                        text = "${controls.count { it.active }} ON",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = RajdhaniFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.5.sp
+                        ),
+                        color = EmeraldBright
+                    )
+                    if (usePagedGrid) {
+                        Row(
+                            modifier = Modifier
+                                .testTag("xgame_controls_page_btn")
+                                .widthIn(min = 48.dp)
+                                .heightIn(min = 28.dp)
+                                .clip(pagePillShape)
+                                .background(XGameGraphiteElevated)
+                                .border(1.dp, XGameNeonRed.copy(alpha = 0.65f), pagePillShape)
+                                .clickable { currentPage = (activePage + 1) % pageCount }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally)
+                        ) {
+                            Text(
+                                text = "${activePage + 1}/$pageCount",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = RajdhaniFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 9.5.sp
+                                ),
+                                color = Color.White
+                            )
+                            Icon(
+                                imageVector = Icons.Rounded.SwapHoriz,
+                                contentDescription = "Switch Controls Page",
+                                tint = XGameNeonRed,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (usePagedGrid) {
+                val pageRows = remember(controls, activePage) {
+                    controls.drop(activePage * 6).take(6).chunked(3)
+                }
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)
+                ) {
+                    pageRows.forEach { rowItems ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            rowItems.forEach { item ->
+                                key(item.id) {
+                                    XGameControlTile(spec = item, modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                val allRows = remember(controls) { controls.chunked(3) }
+                val gridModifier = if (scrollableGrid) {
+                    Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
+                } else {
+                    Modifier.fillMaxWidth()
+                }
+                Column(modifier = gridModifier, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    allRows.forEach { rowItems ->
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            rowItems.forEach { item -> XGameControlTile(spec = item, modifier = Modifier.weight(1f)) }
+                        }
+                    }
                 }
             }
         }
@@ -1029,6 +1130,7 @@ private fun XGameControlTile(spec: XGameControlSpec, modifier: Modifier = Modifi
 
     Column(
         modifier = modifier
+            .testTag("xgame_tile_${spec.id}")
             .scale(scale)
             .minimumInteractiveComponentSize()
             .height(50.dp)
@@ -1207,13 +1309,70 @@ private fun XGameCompactSlider(
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(14.dp))
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = XGameSteelBorder),
-            modifier = Modifier.weight(1f).height(22.dp)
-        )
+    val clamped = value.coerceIn(0f, 1f)
+    var trackWidthPx by remember { mutableIntStateOf(1) }
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(28.dp)
+                .semantics { contentDescription = "Adjust level" }
+                .onSizeChanged { size -> trackWidthPx = size.width.coerceAtLeast(1) }
+                .pointerInput(onValueChange) {
+                    detectTapGestures { offset ->
+                        onValueChange((offset.x / trackWidthPx.toFloat()).coerceIn(0f, 1f))
+                    }
+                }
+                .pointerInput(onValueChange) {
+                    detectHorizontalDragGestures { change, _ ->
+                        change.consume()
+                        onValueChange((change.position.x / trackWidthPx.toFloat()).coerceIn(0f, 1f))
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val trackH = 5.dp.toPx()
+                val thumbR = 6.dp.toPx()
+                val usableW = (size.width - thumbR * 2f).coerceAtLeast(1f)
+                val cy = size.height / 2f
+                val activeW = usableW * clamped
+                val thumbX = thumbR + activeW
+
+                drawRoundRect(
+                    color = XGameSteelBorder,
+                    topLeft = Offset(thumbR, cy - trackH / 2f),
+                    size = Size(usableW, trackH),
+                    cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
+                )
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(listOf(accent.copy(alpha = 0.72f), accent)),
+                    topLeft = Offset(thumbR, cy - trackH / 2f),
+                    size = Size(activeW.coerceAtLeast(trackH), trackH),
+                    cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
+                )
+                drawCircle(
+                    color = accent.copy(alpha = 0.30f),
+                    radius = thumbR * 1.45f,
+                    center = Offset(thumbX, cy)
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = thumbR,
+                    center = Offset(thumbX, cy)
+                )
+                drawCircle(
+                    color = accent,
+                    radius = thumbR * 0.62f,
+                    center = Offset(thumbX, cy)
+                )
+            }
+        }
     }
 }

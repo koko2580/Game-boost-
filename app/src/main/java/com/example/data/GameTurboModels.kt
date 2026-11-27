@@ -180,6 +180,8 @@ data class GameTurboSettings(
     val rotationLock: Boolean = false,
     val openingAnimation: Boolean = true,
     val homeAnimation: Boolean = true,
+    val xSpaceIntroEnabled: Boolean = true,
+    val xSpaceIntroSoundEnabled: Boolean = true,
     val lowRamOverlayMode: Boolean = false,
     val autoDetectGameLaunch: Boolean = true,
     // In-Game HUD active toggles

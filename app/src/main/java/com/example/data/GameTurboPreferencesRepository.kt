@@ -69,6 +69,8 @@ class GameTurboPreferencesRepository(private val context: Context) {
         val ROTATION_LOCK = booleanPreferencesKey("rotation_lock")
         val OPENING_ANIM = booleanPreferencesKey("opening_animation")
         val HOME_ANIM = booleanPreferencesKey("home_animation")
+        val X_SPACE_INTRO_ENABLED = booleanPreferencesKey("x_space_intro_enabled")
+        val X_SPACE_INTRO_SOUND_ENABLED = booleanPreferencesKey("x_space_intro_sound_enabled")
         val LOW_RAM_OVERLAY = booleanPreferencesKey("low_ram_overlay")
         val AUTO_DETECT_GAME = booleanPreferencesKey("auto_detect_game_launch")
 
@@ -150,6 +152,8 @@ class GameTurboPreferencesRepository(private val context: Context) {
             prefs[Keys.ROTATION_LOCK] = updated.rotationLock
             prefs[Keys.OPENING_ANIM] = updated.openingAnimation
             prefs[Keys.HOME_ANIM] = updated.homeAnimation
+            prefs[Keys.X_SPACE_INTRO_ENABLED] = updated.xSpaceIntroEnabled
+            prefs[Keys.X_SPACE_INTRO_SOUND_ENABLED] = updated.xSpaceIntroSoundEnabled
             prefs[Keys.LOW_RAM_OVERLAY] = updated.lowRamOverlayMode
             prefs[Keys.AUTO_DETECT_GAME] = updated.autoDetectGameLaunch
             prefs[Keys.CROSSHAIR_STYLE] = updated.crosshairStyle.name
@@ -276,6 +280,8 @@ class GameTurboPreferencesRepository(private val context: Context) {
             rotationLock = prefs[Keys.ROTATION_LOCK] ?: false,
             openingAnimation = prefs[Keys.OPENING_ANIM] ?: true,
             homeAnimation = prefs[Keys.HOME_ANIM] ?: true,
+            xSpaceIntroEnabled = prefs[Keys.X_SPACE_INTRO_ENABLED] ?: true,
+            xSpaceIntroSoundEnabled = prefs[Keys.X_SPACE_INTRO_SOUND_ENABLED] ?: true,
             lowRamOverlayMode = prefs[Keys.LOW_RAM_OVERLAY] ?: false,
             autoDetectGameLaunch = prefs[Keys.AUTO_DETECT_GAME] ?: true,
             crosshairStyle = enumOrDefault(prefs[Keys.CROSSHAIR_STYLE], CrosshairStyle.NONE),

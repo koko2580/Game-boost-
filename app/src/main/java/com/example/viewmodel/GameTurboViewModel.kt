@@ -646,6 +646,9 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
             if (next.dndMode != prev.dndMode) {
                 hardware.setDoNotDisturb(next.dndMode)
             }
+            if (next.xSpaceIntroEnabled && !prev.xSpaceIntroEnabled) {
+                hasPlayedXSpaceIntroInSession = false
+            }
             val t = _telemetry.value
             hardware.performanceEngine.applyProfile(
                 settings = next,
@@ -1816,6 +1819,27 @@ class GameTurboViewModel(application: Application) : AndroidViewModel(applicatio
             showStatus("Could not launch $gameName — opening Game Panel")
             _isInAppOverlayOpen.value = true
         }
+    }
+
+    private var hasPlayedXSpaceIntroInSession: Boolean = false
+
+    fun shouldPlayXSpaceIntro(): Boolean {
+        return settings.value.xSpaceIntroEnabled && !hasPlayedXSpaceIntroInSession
+    }
+
+    fun markXSpaceIntroPlayed() {
+        hasPlayedXSpaceIntroInSession = true
+    }
+
+    fun setXSpaceIntroEnabled(enabled: Boolean) {
+        if (enabled) {
+            hasPlayedXSpaceIntroInSession = false
+        }
+        updateSettings { it.copy(xSpaceIntroEnabled = enabled) }
+    }
+
+    fun setXSpaceIntroSoundEnabled(enabled: Boolean) {
+        updateSettings { it.copy(xSpaceIntroSoundEnabled = enabled) }
     }
 
     fun showStatus(message: String) {

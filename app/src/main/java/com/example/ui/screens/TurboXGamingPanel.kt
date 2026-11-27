@@ -181,7 +181,7 @@ fun TurboXGamingPanel(
                         WindowInsets.mandatorySystemGestures.only(WindowInsetsSides.Bottom)
                     )
                 )
-                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .padding(start = 10.dp, end = 14.dp, top = 6.dp, bottom = 6.dp)
         ) {
             val isLandscape = maxWidth >= 560.dp
             val compactHeight = maxHeight < 430.dp
@@ -195,7 +195,8 @@ fun TurboXGamingPanel(
                     telemetry = telemetry,
                     remainingTurboSeconds = remainingTurboSeconds,
                     permissions = permissions,
-                    compact = !isLandscape || compactHeight,
+                    compact = !isLandscape,
+                    compactHeight = compactHeight,
                     onBack = onBack,
                     onAddTurboTime = onAddTurboTime,
                     onNavigateAddApps = onNavigateAddApps,

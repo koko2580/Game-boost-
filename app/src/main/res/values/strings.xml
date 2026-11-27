@@ -3,4 +3,13 @@
     <string name="admob_app_id" translatable="false">ca-app-pub-5984576938417142~8737463815</string>
     <string name="privacy_policy_url" translatable="false">https://videodownloaderttk.blogspot.com/2026/11/turbo-x-game-space.html?m=1</string>
     <string name="action_privacy_policy">Privacy Policy</string>
+    <string name="xspace_intro_skip">SKIP INTRO</string>
+    <string name="xspace_intro_mute_cd">Mute intro sound</string>
+    <string name="xspace_intro_unmute_cd">Unmute intro sound</string>
+    <string name="xspace_intro_brand">TURBO X</string>
+    <string name="xspace_intro_subtitle">X-SPACE PORTAL</string>
+    <string name="xspace_intro_phase_cosmic">COSMIC LINK INITIALIZED</string>
+    <string name="xspace_intro_phase_horizon">EVENT HORIZON ENGAGED</string>
+    <string name="xspace_intro_phase_vortex">SINGULARITY ABSORPTION</string>
+    <string name="xspace_intro_phase_warp">ENTERING X-SPACE</string>
 </resources>
