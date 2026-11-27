@@ -30,9 +30,9 @@ enum class ControlPanelLayout(val title: String, val subtitle: String) {
 enum class GamePanelStyle(val label: String, val tagline: String) {
     CLASSIC("Classic", "Compact half-screen HUD dock"),
     NEW("Angled Cyber", "Angled cyber half-screen dock"),
-    ROG_STYLE("Real ROG Style", "Compact Game Genie • X-Mode HUD"),
-    XIAOMI_STYLE("Real Xiaomi Style", "Left rail • Gold FPS graph & dock"),
-    REDMAGIC_STYLE("Real RedMagic Style", "GameSpace • Dual arcs & dock")
+    ROG_STYLE("Turbo Panel 1.0", "Compact Game Genie • X-Mode HUD"),
+    XIAOMI_STYLE("Mi Turbo 1.0", "Left rail • Gold FPS graph & dock"),
+    REDMAGIC_STYLE("Black Magic 1.0", "GameSpace • Dual arcs & dock")
 }
 
 enum class WallpaperTheme(val label: String) {
