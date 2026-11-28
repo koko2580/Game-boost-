@@ -71,14 +71,14 @@ android {
         test.maxHeapSize = "1536m"
         test.jvmArgs("-XX:+UseG1GC")
         test.forkEvery = 1
-        listOf(
-          "robolectric.dependency.repo.url",
-          "robolectric.dependency.repo.id",
-          "robolectric.offline"
-        ).forEach { prop ->
-          System.getProperty(prop)?.let { value ->
-            test.systemProperty(prop, value)
-          }
+        val repoUrl = providers.systemProperty("robolectric.dependency.repo.url").orNull
+          ?: "https://maven-central.storage-download.googleapis.com/maven2"
+        val repoId = providers.systemProperty("robolectric.dependency.repo.id").orNull
+          ?: "google-maven-central-mirror"
+        test.systemProperty("robolectric.dependency.repo.url", repoUrl)
+        test.systemProperty("robolectric.dependency.repo.id", repoId)
+        providers.systemProperty("robolectric.offline").orNull?.let { offline ->
+          test.systemProperty("robolectric.offline", offline)
         }
       }
     }
